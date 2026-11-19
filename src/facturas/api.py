@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
 
 from .extractores import ExtractorReglas, extractor_llm
 from .models import Resultado
@@ -22,6 +23,11 @@ def _crear_pipeline() -> Pipeline:
 
 
 pipeline = _crear_pipeline()
+
+
+@app.get("/", include_in_schema=False)
+def raiz() -> RedirectResponse:
+    return RedirectResponse("/docs")
 
 
 @app.get("/health")
