@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Juan Camilo Cortés Sánchez" }]
 dependencies = [
     "pydantic>=2.6",
+    "defusedxml>=0.7",
     "pymupdf>=1.24",
     "opencv-python-headless>=4.9",
     "pytesseract>=0.3.10",
