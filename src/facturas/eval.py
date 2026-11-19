@@ -129,6 +129,9 @@ def main() -> None:
             return Pipeline(extractor=llm, segundo=ExtractorReglas() if args.consenso else None, hoy=hoy)
         return Pipeline(hoy=hoy)
 
+    if not args.carpeta.is_dir():
+        raise SystemExit(f"No existe la carpeta '{args.carpeta}'. Descomprime ahí las facturas "
+                         "(una subcarpeta por factura con su .pdf y su .xml).")
     filas = evaluar(args.carpeta, factory)
     if not filas:
         raise SystemExit(f"No hay casos (carpetas con .pdf y .xml) en {args.carpeta}")
