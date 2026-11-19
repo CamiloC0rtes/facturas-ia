@@ -64,13 +64,13 @@ def verificar_grounding(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
         campo = getattr(f, nombre)
         if campo.valor is None:
             hallazgos.append(
-                Hallazgo(regla="campo_faltante", severidad=Severidad.ERROR,
+                Hallazgo(regla="campo_faltante", campo=nombre, severidad=Severidad.ERROR,
                          mensaje=f"{nombre}: no se pudo leer")
             )
             continue
         if not campo.evidencia:
             hallazgos.append(
-                Hallazgo(regla="sin_evidencia", severidad=Severidad.ERROR,
+                Hallazgo(regla="sin_evidencia", campo=nombre, severidad=Severidad.ERROR,
                          mensaje=f"{nombre}: valor sin evidencia")
             )
             continue
@@ -78,12 +78,12 @@ def verificar_grounding(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
         score = fuzz.partial_ratio(evidencia, fuente)
         if score < UMBRAL_GROUNDING or not _numeros_exactos(evidencia, fuente):
             hallazgos.append(
-                Hallazgo(regla="evidencia_inexistente", severidad=Severidad.ERROR,
+                Hallazgo(regla="evidencia_inexistente", campo=nombre, severidad=Severidad.ERROR,
                          mensaje=f"{nombre}: la evidencia no aparece en el documento ({score:.0f}%)")
             )
         elif not _valor_en_evidencia(campo.valor, campo.evidencia):
             hallazgos.append(
-                Hallazgo(regla="valor_no_coincide", severidad=Severidad.ERROR,
+                Hallazgo(regla="valor_no_coincide", campo=nombre, severidad=Severidad.ERROR,
                          mensaje=f"{nombre}: el valor '{campo.valor}' no está en su evidencia")
             )
     return hallazgos
@@ -92,33 +92,37 @@ def verificar_grounding(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
 def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallazgo]:
     hoy = hoy or date.today()
     h: list[Hallazgo] = []
-    err = lambda r, m: h.append(Hallazgo(regla=r, severidad=Severidad.ERROR, mensaje=m))
-    warn = lambda r, m: h.append(Hallazgo(regla=r, severidad=Severidad.ADVERTENCIA, mensaje=m))
+    def err(regla: str, msg: str, campo: str | None = None) -> None:
+        h.append(Hallazgo(regla=regla, campo=campo, severidad=Severidad.ERROR, mensaje=msg))
+
+    def warn(regla: str, msg: str, campo: str | None = None) -> None:
+        h.append(Hallazgo(regla=regla, campo=campo, severidad=Severidad.ADVERTENCIA, mensaje=msg))
 
     sub, iva, tot = f.subtotal.valor, f.iva.valor, f.total.valor
     if None not in (sub, iva, tot):
         if abs(sub + iva - tot) > TOLERANCIA:
-            err("suma_total", f"subtotal + IVA ({sub + iva}) != total ({tot})")
+            err("suma_total", f"subtotal + IVA ({sub + iva}) != total ({tot})", "total")
         if sub > 0 and not any(abs(sub * t - iva) <= TOLERANCIA for t in TARIFAS_IVA):
-            err("tarifa_iva", f"IVA {iva} no corresponde a 19%, 5% ni 0% de {sub}")
+            err("tarifa_iva", f"IVA {iva} no corresponde a 19%, 5% ni 0% de {sub}", "iva")
 
     if f.lineas and sub is not None:
         suma = sum(l.total for l in f.lineas)
         if abs(suma - sub) > TOLERANCIA:
-            err("suma_lineas", f"suma de líneas ({suma}) != subtotal ({sub})")
+            err("suma_lineas", f"suma de líneas ({suma}) != subtotal ({sub})", "subtotal")
 
     for nombre in ("nit_emisor", "nit_cliente"):
         nit = getattr(f, nombre).valor
         if nit and not nit_valido(nit):
-            err("dv_nit", f"{nombre} {nit}: dígito de verificación inválido")
+            err("dv_nit", f"{nombre} {nit}: dígito de verificación inválido", nombre)
 
     emi, ven = f.fecha_emision.valor, f.fecha_vencimiento.valor
     if emi and emi > hoy:
-        err("fecha_futura", f"fecha de emisión {emi} está en el futuro")
+        err("fecha_futura", f"fecha de emisión {emi} está en el futuro", "fecha_emision")
     if emi and ven and ven < emi:
-        err("vencimiento", "vencimiento anterior a la emisión")
+        err("vencimiento", "vencimiento anterior a la emisión", "fecha_vencimiento")
     if ven is None:
-        warn("sin_vencimiento", "sin fecha de vencimiento: se usará el plazo por defecto")
+        warn("sin_vencimiento", "sin fecha de vencimiento: se usará el plazo por defecto",
+             "fecha_vencimiento")
     return h
 
 
@@ -128,6 +132,6 @@ def comparar(a: FacturaExtraida, b: FacturaExtraida) -> list[Hallazgo]:
     for nombre in a.CAMPOS_CRITICOS:
         va, vb = getattr(a, nombre).valor, getattr(b, nombre).valor
         if va is not None and vb is not None and va != vb:
-            h.append(Hallazgo(regla="sin_consenso", severidad=Severidad.ERROR,
+            h.append(Hallazgo(regla="sin_consenso", campo=nombre, severidad=Severidad.ERROR,
                               mensaje=f"{nombre}: '{va}' vs '{vb}'"))
     return h

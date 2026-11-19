@@ -60,6 +60,7 @@ class Severidad(str, Enum):
 
 class Hallazgo(BaseModel):
     regla: str
+    campo: Optional[str] = None
     severidad: Severidad
     mensaje: str
 
@@ -83,7 +84,11 @@ class Resultado(BaseModel):
     archivo: str
     sha256: str
     metodo_texto: str  # "nativo" | "ocr"
+    extractor: Optional[str] = None  # "reglas" | "openai" | "claude"
+    modelo: Optional[str] = None
+    prompt_version: Optional[str] = None
     calidad: Optional[float] = None
+    texto: Optional[str] = Field(default=None, description="Texto fuente (nativo u OCR)")
     factura: Optional[FacturaExtraida] = None
     hallazgos: list[Hallazgo] = []
     decision: Decision

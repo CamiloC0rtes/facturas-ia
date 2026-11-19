@@ -18,6 +18,33 @@ $ python -m facturas.cli samples/*.pdf
        -> cobro borrador: $1.190.000 a 800.987.654-4 antes de 2026-12-03
 ```
 
+## Interfaz visual
+
+```bash
+streamlit run app.py
+```
+
+Sube un PDF o elige un ejemplo y elige el extractor (reglas, OpenAI o Claude). La interfaz muestra:
+
+- la factura con la evidencia de cada campo resaltada: **verde** si está verificada, **rojo** si tiene error
+- los campos extraídos, los hallazgos, la decisión y el cobro
+- el extractor, el modelo y la versión de prompt que se usaron
+- un formulario de **revisión humana**: los valores corregidos vuelven a pasar por las reglas antes de generar el cobro
+
+## Modelo y prompt engineering
+
+| | Actual (`PROMPT_VERSION = v1`) |
+|---|---|
+| Modelo | OpenAI `gpt-4.1-mini` por defecto (`FACTURAS_MODELO_OPENAI`) o Claude (`FACTURAS_MODELO`). Se elegirá con la evaluación de v0.3 |
+| Entrada | Solo texto (nativo u OCR) delimitado con `<factura>…</factura>`. Todavía no se envía la imagen |
+| Salida | Esquema JSON estricto: Structured Outputs (`strict: true`) en OpenAI, *tool use* forzado en Claude |
+| Instrucciones | Extraer solo lo literal; no calcular ni deducir; `null` si no es legible; evidencia literal obligatoria; formatos normalizados (fechas ISO, NIT con DV) |
+| Determinismo | `temperature=0` |
+| Few-shot | No (zero-shot). Se agregará solo si la evaluación lo justifica |
+| Defensa | El prompt **no** es la defensa principal: lo son el grounding, las reglas y el consenso |
+
+Ver [ROADMAP.md](ROADMAP.md) para la salida objetivo, las métricas de éxito y los evolutivos.
+
 ## Arquitectura
 
 ```mermaid
@@ -86,19 +113,17 @@ src/facturas/
   extractores.py  # ExtractorReglas (regex), ExtractorOpenAI y ExtractorClaude
   validacion.py   # grounding, reglas fiscales, DV NIT, consenso
   pipeline.py     # orquestación y decisión automatico / revision / rechazado
+  resaltado.py    # ubica la evidencia en la imagen (PDF nativo u OCR)
   api.py          # FastAPI
   cli.py
+app.py                    # interfaz Streamlit
 scripts/generar_demo.py   # facturas ficticias: nativa, escaneada, borrosa, inconsistente
 tests/                    # incluye un LLM simulado que alucina y es atrapado
 ```
 
-## Próximos pasos (versión producción)
+## Próximos pasos
 
-- Leer el **XML UBL 2.1** y el **QR** de la factura electrónica DIAN antes de usar OCR
-- Cola (Redis/Celery) y almacenamiento de originales (S3/MinIO)
-- PostgreSQL con índice único `(nit_emisor, numero)` para deduplicar
-- UI de revisión humana con *bounding boxes* del OCR
-- Set de evaluación etiquetado y métrica de falsos aprobados
+Ver [ROADMAP.md](ROADMAP.md). El siguiente es **v0.3: evaluación** con facturas reales etiquetadas.
 
 ## Licencia
 

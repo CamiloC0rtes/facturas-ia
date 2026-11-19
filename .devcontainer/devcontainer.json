@@ -2,11 +2,32 @@
   "name": "facturas-ia",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-spa && pip install -e '.[dev]' && python scripts/generar_demo.py",
-  "forwardPorts": [8000],
+  "forwardPorts": [
+    8501,
+    8000
+  ],
   "secrets": {
-    "OPENAI_API_KEY": { "description": "API key de OpenAI para el extractor LLM" }
+    "OPENAI_API_KEY": {
+      "description": "API key de OpenAI para el extractor LLM"
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "Opcional: API key de Anthropic"
+    }
   },
   "customizations": {
-    "vscode": { "extensions": ["ms-python.python"] }
+    "vscode": {
+      "extensions": [
+        "ms-python.python"
+      ]
+    }
+  },
+  "portsAttributes": {
+    "8501": {
+      "label": "Interfaz",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "API"
+    }
   }
 }

@@ -24,7 +24,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27", "reportlab>=4.1"]
+ui = ["streamlit>=1.35", "pandas>=2.0", "pillow>=10"]
+dev = ["pytest>=8", "httpx>=0.27", "reportlab>=4.1", "facturas-ia[ui]"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

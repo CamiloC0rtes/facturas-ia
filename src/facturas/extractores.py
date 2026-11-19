@@ -69,6 +69,8 @@ _PATRONES = {
 
 class ExtractorReglas:
     nombre = "reglas"
+    modelo = None
+    prompt_version = None
 
     def extraer(self, texto: str) -> FacturaExtraida:
         datos: dict[str, Campo] = {}
@@ -89,6 +91,10 @@ class ExtractorReglas:
 
 
 # ------------------------------------------------------------ extractor LLM
+
+# Cambia la versión cada vez que se modifique el prompt o el esquema,
+# para poder comparar resultados entre versiones (ver ROADMAP.md).
+PROMPT_VERSION = "v1"
 
 PROMPT_SISTEMA = """Eres un extractor de datos de facturas colombianas.
 Reglas estrictas:
@@ -121,6 +127,7 @@ TOOL = {
 
 class ExtractorClaude:
     nombre = "claude"
+    prompt_version = PROMPT_VERSION
 
     def __init__(self, modelo: str | None = None, client=None):
         import anthropic
@@ -150,6 +157,7 @@ class ExtractorOpenAI:
     """Mismo contrato que ExtractorClaude, usando Structured Outputs (schema estricto)."""
 
     nombre = "openai"
+    prompt_version = PROMPT_VERSION
 
     def __init__(self, modelo: str | None = None, client=None):
         if client is None:

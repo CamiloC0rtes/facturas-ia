@@ -28,12 +28,17 @@ class Pipeline:
         if sha in self._vistos:
             return Resultado(archivo=nombre, sha256=sha, metodo_texto="-",
                              decision=Decision.RECHAZADO,
+                             extractor=self.extractor.nombre,
                              hallazgos=[Hallazgo(regla="duplicado", severidad=Severidad.ERROR,
                                                  mensaje="archivo ya procesado")])
         self._vistos.add(sha)
 
         doc = extraer_texto(pdf)
-        base = dict(archivo=nombre, sha256=sha, metodo_texto=doc.metodo, calidad=doc.calidad)
+        base = dict(archivo=nombre, sha256=sha, metodo_texto=doc.metodo, calidad=doc.calidad,
+                    texto=doc.texto,
+                    extractor=self.extractor.nombre,
+                    modelo=getattr(self.extractor, "modelo", None),
+                    prompt_version=getattr(self.extractor, "prompt_version", None))
 
         # 1. Gate de calidad: no adivinar sobre imágenes ilegibles
         if doc.metodo == "ocr" and doc.calidad is not None and doc.calidad < UMBRAL_NITIDEZ:
@@ -65,6 +70,20 @@ class Pipeline:
     def procesar_archivo(self, ruta: str | Path) -> Resultado:
         ruta = Path(ruta)
         return self.procesar(ruta.read_bytes(), ruta.name)
+
+
+def revisar(f: FacturaExtraida, hoy: date | None = None) -> tuple[list[Hallazgo], Cobro | None]:
+    """Revisión humana: los valores corregidos por una persona vuelven a pasar
+    por las reglas de negocio (no por grounding, porque los digitó un humano)."""
+    hallazgos = verificar_reglas(f, hoy=hoy)
+    faltantes = [c for c in f.CAMPOS_CRITICOS if getattr(f, c).valor is None]
+    hallazgos += [Hallazgo(regla="campo_faltante", campo=c, severidad=Severidad.ERROR,
+                           mensaje=f"{c}: sigue vacío") for c in faltantes]
+    if any(h.severidad == Severidad.ERROR for h in hallazgos):
+        return hallazgos, None
+    cobro = generar_cobro(f)
+    cobro.estado = "borrador (revisado)"
+    return hallazgos, cobro
 
 
 def generar_cobro(f: FacturaExtraida) -> Cobro:

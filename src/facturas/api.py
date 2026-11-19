@@ -35,7 +35,7 @@ def health() -> dict:
     return {"ok": True, "extractor": pipeline.extractor.nombre}
 
 
-@app.post("/facturas", response_model=Resultado)
+@app.post("/facturas", response_model=Resultado, response_model_exclude={"texto"})
 async def subir_factura(archivo: UploadFile = File(...)) -> Resultado:
     if not (archivo.filename or "").lower().endswith(".pdf"):
         raise HTTPException(415, "Solo se aceptan PDF")
