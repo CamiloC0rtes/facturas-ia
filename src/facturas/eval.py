@@ -19,6 +19,7 @@ import argparse
 import json
 import re
 import time
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -100,6 +101,8 @@ def resumen(filas: list[Fila]) -> dict:
     n = len(filas)
     auto = [f for f in filas if f.decision == Decision.AUTOMATICO.value]
     falsos = [f.caso for f in auto if not f.criticos_ok]
+    # revisión innecesaria: todo lo crítico estaba bien, pero una regla la frenó
+    innecesarias = [f for f in filas if f.criticos_ok and f.decision != Decision.AUTOMATICO.value]
     por_campo = {c: round(sum(f.correctos[c] for f in filas) / n, 3) for c in FacturaExtraida.CAMPOS}
     return {
         "facturas": n,
@@ -108,6 +111,9 @@ def resumen(filas: list[Fila]) -> dict:
         "tasa_automatizacion": round(len(auto) / n, 3),
         "falsos_aprobados": len(falsos),
         "falsos_aprobados_casos": falsos,
+        "revisiones_innecesarias": len(innecesarias),
+        "reglas_que_frenan_revisiones_innecesarias": dict(
+            Counter(h for f in innecesarias for h in f.hallazgos).most_common()),
         "segundos_promedio": round(sum(f.segundos for f in filas) / n, 2),
     }
 
@@ -142,6 +148,8 @@ def main() -> None:
         print(f"[{marca}] {f.caso}  {f.segundos}s{alerta}")
         for e in f.errores:
             print(f"        x {e}")
+        if f.decision != "automatico":
+            print(f"        > frenada por: {', '.join(f.hallazgos) or '-'}")
 
     res = resumen(filas)
     p = factory()

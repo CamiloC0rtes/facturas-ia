@@ -39,7 +39,9 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
 - ✅ Set privado inicial: 21 facturas reales de 17 emisores (retail, gimnasios, cine, Cámara de Comercio…), fuera del repo
 - ✅ Prompts versionados (`v1`, `v2`) para comparar
 - ✅ Primera corrida con OpenAI (`gpt-4.1-mini`, prompt `v1`): **4 falsos aprobados** → reglas de rol
-- ⏳ Re-correr `v1` y `v2` con las reglas de rol y publicar la tabla comparativa
+- ✅ Re-corrida con reglas de rol: `v1` 0 falsos aprobados / 5 % automatización; `v2` **0 falsos aprobados / 29 % automatización**, NIT cliente 24 % → 95 % (tabla en el README)
+- ⏳ Reducir revisiones innecesarias: 7 facturas con todo correcto frenadas por alguna regla (la evaluación ahora reporta cuáles)
+- ⏳ Próximo prompt `v3`: prefijo del número de factura (`TDCR28625`, no `28625`) y subtotal antes de IVA en facturas con precios IVA incluido
 
 **Línea base (extractor de reglas, sin IA, 21 facturas reales):** exactitud por campo entre 0 % y 57 %, 0 % de automatización y **0 falsos aprobados**. Las reglas no sirven para extraer de formatos reales, pero las validaciones cumplen su función: nada mal leído llega a cobro.
 

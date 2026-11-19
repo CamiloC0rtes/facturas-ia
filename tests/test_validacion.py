@@ -164,3 +164,11 @@ def test_telefono_antes_del_rotulo_nit_no_es_falsa_alarma():
     texto = "COMODIN S.A.S TELÉFONO: 744 7285 Nit: 800069933-6"
     f = factura(nit_emisor=Campo(valor="800069933-6", evidencia="x"))
     assert not [h for h in verificar_roles(f, texto) if h.campo == "nit_emisor"]
+
+
+def test_normalizar_nit():
+    from facturas.extractores import normalizar_nit
+
+    assert normalizar_nit("800069933 6") == "800069933-6"
+    assert normalizar_nit("900.123.456 - 8") == "900.123.456-8"
+    assert normalizar_nit("1000491862") == "1000491862"

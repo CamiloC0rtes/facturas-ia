@@ -244,6 +244,15 @@ def extractor_llm(proveedor: str | None = None, modelo: str | None = None,
     return None
 
 
+def normalizar_nit(v: str | None) -> str | None:
+    """'800069933 6' / '800069933 - 6' -> '800069933-6' (formato, no contenido)."""
+    if not v:
+        return v
+    v = v.strip()
+    m = re.fullmatch(r"([\d.]{5,15})\s*[-\s]\s*(\d)", v)
+    return f"{m.group(1)}-{m.group(2)}" if m else v
+
+
 def a_modelo(crudo: dict) -> FacturaExtraida:
     if isinstance(crudo, str):
         crudo = json.loads(crudo)
@@ -255,5 +264,7 @@ def a_modelo(crudo: dict) -> FacturaExtraida:
             v = parse_monto(v)
         elif campo.startswith("fecha"):
             v = parse_fecha(v)
+        elif campo.startswith("nit"):
+            v = normalizar_nit(v)
         datos[campo] = Campo(valor=v, evidencia=c.get("evidencia") if v is not None else None)
     return FacturaExtraida(**datos)
