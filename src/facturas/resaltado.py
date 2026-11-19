@@ -68,7 +68,7 @@ def imagen_con_evidencias(pdf: bytes, factura: FacturaExtraida | None, metodo: s
 
     palabras = _palabras_ocr(img) if metodo == "ocr" else None
     cajas: list[Caja] = []
-    for campo in factura.CAMPOS_CRITICOS + ("fecha_vencimiento",):
+    for campo in factura.CAMPOS:
         c = getattr(factura, campo)
         if not c.evidencia:
             continue

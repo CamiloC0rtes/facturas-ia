@@ -33,11 +33,24 @@ PDF nativo vs OCR, gate de calidad, extractor de reglas, extractores OpenAI y Cl
 ## v0.2 Interfaz visual ✅
 Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campos, hallazgos, cobro, **revisión humana** con revalidación, y trazabilidad de extractor, modelo y versión de prompt.
 
-## v0.3 Evaluación (siguiente, y base de todo lo demás)
-- `eval/`: 50–100 facturas reales anonimizadas + `etiquetas.json` con los valores correctos
-- `python -m facturas.eval --llm openai --modelo X`: exactitud por campo, falsos aprobados, tasa de automatización, costo y latencia
-- Tabla comparativa de modelos (p. ej. gpt-4.1-mini vs gpt-5-mini vs Claude) y de versiones de prompt
-- Sin esto, cada cambio de prompt o de modelo es una opinión, no una mejora medida
+## v0.3 Evaluación (en curso)
+- ✅ `python -m facturas.eval <carpeta> [--llm openai] [--prompt v1|v2] [--modelo X]`: exactitud por campo, falsos aprobados, tasa de automatización y latencia
+- ✅ Etiquetado automático con el **XML DIAN** que viene en el ZIP de cada factura electrónica (`dian_xml.py`): no hay que etiquetar a mano
+- ✅ Set privado inicial: 21 facturas reales de 17 emisores (retail, gimnasios, cine, Cámara de Comercio…), fuera del repo
+- ✅ Prompts versionados (`v1`, `v2`) para comparar
+- ⏳ Correr la comparación con OpenAI (`v1` vs `v2`, y varios modelos) y publicar la tabla de resultados aquí
+
+**Línea base (extractor de reglas, sin IA, 21 facturas reales):** exactitud por campo entre 0 % y 57 %, 0 % de automatización y **0 falsos aprobados**. Las reglas no sirven para extraer de formatos reales, pero las validaciones cumplen su función: nada mal leído llega a cobro.
+
+**Lo que enseñaron las facturas reales** (y no habrían mostrado las sintéticas):
+| Hallazgo | Cambio |
+|---|---|
+| Montos en formato estadounidense (`750,500.00`) se leían mal | `parse_monto` soporta ambos formatos |
+| El cliente persona natural tiene cédula sin dígito de verificación | El DV solo se valida si viene |
+| Un tercio de las facturas no tienen IVA | El IVA deja de ser campo crítico; si falta, se exige subtotal = total |
+| IVA mixto (ítems gravados y excluidos, p. ej. cine) | Tarifa no estándar es advertencia; solo es error si supera el 19 % |
+| Se confunde el número de resolución o el NIT del proveedor tecnológico con los de la factura | Prompt `v2` con definición explícita de cada campo |
+| Fecha de vencimiento `0001-01-01` como valor vacío en el XML | Se trata como vacío |
 
 ## v0.4 Factura electrónica DIAN
 - Leer el XML UBL 2.1 (AttachedDocument) cuando venga: es la fuente de verdad y no necesita IA

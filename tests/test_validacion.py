@@ -1,6 +1,9 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
+from facturas.extractores import parse_monto
 from facturas.models import Campo, FacturaExtraida
 from facturas.validacion import (
     comparar,
@@ -67,10 +70,27 @@ def test_campo_ilegible_va_a_revision():
     assert any(h.regla == "campo_faltante" for h in verificar_grounding(f, TEXTO))
 
 
-def test_iva_con_tarifa_imposible():
-    f = factura(iva=Campo(valor=Decimal("150000"), evidencia="x"),
-                total=Campo(valor=Decimal("1150000"), evidencia="x"))
-    assert any(h.regla == "tarifa_iva" for h in verificar_reglas(f, hoy=HOY))
+def test_iva_imposible_es_error_y_mixto_es_advertencia():
+    imposible = factura(iva=Campo(valor=Decimal("250000"), evidencia="x"),
+                        total=Campo(valor=Decimal("1250000"), evidencia="x"))
+    assert any(h.regla == "tarifa_iva" for h in verificar_reglas(imposible, hoy=HOY))
+    # facturas reales con ítems gravados y excluidos (p. ej. cine): IVA "raro" pero válido
+    mixto = factura(iva=Campo(valor=Decimal("510.92"), evidencia="x"),
+                    subtotal=Campo(valor=Decimal("52689.08"), evidencia="x"),
+                    total=Campo(valor=Decimal("53200"), evidencia="x"))
+    h = verificar_reglas(mixto, hoy=HOY)
+    assert [x.regla for x in h if x.severidad.value == "error"] == []
+    assert any(x.regla == "tarifa_iva_mixta" for x in h)
+
+
+def test_factura_sin_iva():
+    f = factura(iva=Campo(), subtotal=Campo(valor=Decimal("114559"), evidencia="x"),
+                total=Campo(valor=Decimal("114559"), evidencia="x"))
+    assert [x for x in verificar_reglas(f, hoy=HOY) if x.severidad.value == "error"] == []
+
+
+def test_cedula_sin_dv_es_valida():
+    assert nit_valido("1000491862")
 
 
 def test_nit_con_dv_incorrecto():
@@ -87,3 +107,16 @@ def test_consenso_detecta_desacuerdo():
     a = factura()
     b = factura(total=Campo(valor=Decimal("1190001"), evidencia="x"))
     assert [h.regla for h in comparar(a, b)] == ["sin_consenso"]
+
+
+@pytest.mark.parametrize("texto,esperado", [
+    ("$ 1.190.000", "1190000"),
+    ("630.672,27", "630672.27"),
+    ("750,500.00", "750500.00"),
+    ("114,559", "114559"),
+    ("52689.08", "52689.08"),
+    ("18739,50", "18739.50"),
+    ("$369950", "369950"),
+])
+def test_parse_monto_formatos_reales(texto, esperado):
+    assert parse_monto(texto) == Decimal(esperado)

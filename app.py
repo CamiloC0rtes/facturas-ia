@@ -10,8 +10,8 @@ import pandas as pd
 import streamlit as st
 
 from facturas.extractores import (
-    PROMPT_SISTEMA,
     PROMPT_VERSION,
+    PROMPTS,
     ExtractorClaude,
     ExtractorOpenAI,
     ExtractorReglas,
@@ -57,18 +57,23 @@ with st.sidebar:
             if key:
                 os.environ["ANTHROPIC_API_KEY"] = key
         modelo = st.text_input("Modelo", os.getenv("FACTURAS_MODELO", "claude-sonnet-5-5"))
+    prompt_v = PROMPT_VERSION
     if proveedor != "Reglas (sin IA)":
-        consenso = st.checkbox("Consenso con extractor de reglas", value=True)
-        with st.expander(f"Prompt del sistema ({PROMPT_VERSION})"):
-            st.code(PROMPT_SISTEMA, language="markdown")
+        versiones = list(PROMPTS)
+        prompt_v = st.selectbox("Versión de prompt", versiones, index=versiones.index(PROMPT_VERSION))
+        consenso = st.checkbox("Consenso con extractor de reglas", value=False,
+                               help="Con facturas reales el extractor de reglas falla seguido: "
+                                    "activarlo manda casi todo a revisión.")
+        with st.expander(f"Ver prompt {prompt_v}"):
+            st.code(PROMPTS[prompt_v], language="markdown")
 
 
 def crear_pipeline() -> Pipeline:
     if proveedor == "OpenAI":
-        return Pipeline(extractor=ExtractorOpenAI(modelo=modelo),
+        return Pipeline(extractor=ExtractorOpenAI(modelo=modelo, prompt_version=prompt_v),
                         segundo=ExtractorReglas() if consenso else None)
     if proveedor == "Claude":
-        return Pipeline(extractor=ExtractorClaude(modelo=modelo),
+        return Pipeline(extractor=ExtractorClaude(modelo=modelo, prompt_version=prompt_v),
                         segundo=ExtractorReglas() if consenso else None)
     return Pipeline()
 

@@ -42,15 +42,17 @@ class FacturaExtraida(BaseModel):
     total: Campo[Decimal] = Campo()
     lineas: list[LineaFactura] = []
 
+    # Sin estos no se puede cobrar. El IVA no es crítico: muchas facturas reales
+    # no lo tienen (servicios excluidos) y su coherencia se valida con las reglas.
     CAMPOS_CRITICOS: ClassVar[tuple[str, ...]] = (
         "numero",
         "nit_emisor",
         "nit_cliente",
         "fecha_emision",
         "subtotal",
-        "iva",
         "total",
     )
+    CAMPOS: ClassVar[tuple[str, ...]] = CAMPOS_CRITICOS + ("iva", "fecha_vencimiento")
 
 
 class Severidad(str, Enum):

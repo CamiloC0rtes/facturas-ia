@@ -31,14 +31,27 @@ Sube un PDF o elige un ejemplo y elige el extractor (reglas, OpenAI o Claude). L
 - el extractor, el modelo y la versión de prompt que se usaron
 - un formulario de **revisión humana**: los valores corregidos vuelven a pasar por las reglas antes de generar el cobro
 
+## Evaluación con facturas reales
+
+Cada factura electrónica colombiana llega por correo en un ZIP con el PDF **y el XML firmado de la DIAN**. El XML es la respuesta correcta, así que sirve para etiquetar automáticamente:
+
+```bash
+# eval_privado/f01/{factura.pdf, factura.xml}, f02/... (carpeta en .gitignore)
+python -m facturas.eval eval_privado                                   # línea base sin IA
+python -m facturas.eval eval_privado --llm openai --prompt v1 --salida resultados_eval_v1.json
+python -m facturas.eval eval_privado --llm openai --prompt v2 --salida resultados_eval_v2.json
+```
+
+Reporta exactitud por campo, tasa de automatización, latencia y **falsos aprobados** (cobros automáticos con algún dato crítico mal). Hallazgos y resultados en [ROADMAP.md](ROADMAP.md#v03-evaluación-en-curso).
+
 ## Modelo y prompt engineering
 
-| | Actual (`PROMPT_VERSION = v1`) |
+| | Actual (`FACTURAS_PROMPT`, por defecto `v2`) |
 |---|---|
 | Modelo | OpenAI `gpt-4.1-mini` por defecto (`FACTURAS_MODELO_OPENAI`) o Claude (`FACTURAS_MODELO`). Se elegirá con la evaluación de v0.3 |
 | Entrada | Solo texto (nativo u OCR) delimitado con `<factura>…</factura>`. Todavía no se envía la imagen |
 | Salida | Esquema JSON estricto: Structured Outputs (`strict: true`) en OpenAI, *tool use* forzado en Claude |
-| Instrucciones | Extraer solo lo literal; no calcular ni deducir; `null` si no es legible; evidencia literal obligatoria; formatos normalizados (fechas ISO, NIT con DV) |
+| Instrucciones | Extraer solo lo literal; no calcular ni deducir; `null` si no es legible; evidencia literal obligatoria. `v2` añade la definición de cada campo (qué **no** es el número de factura, cuál NIT es cuál) a partir de errores vistos en facturas reales |
 | Determinismo | `temperature=0` |
 | Few-shot | No (zero-shot). Se agregará solo si la evaluación lo justifica |
 | Defensa | El prompt **no** es la defensa principal: lo son el grounding, las reglas y el consenso |
@@ -112,6 +125,8 @@ src/facturas/
   texto.py        # PDF nativo vs OCR, gate de calidad, preprocesamiento
   extractores.py  # ExtractorReglas (regex), ExtractorOpenAI y ExtractorClaude
   validacion.py   # grounding, reglas fiscales, DV NIT, consenso
+  dian_xml.py     # lee el XML UBL 2.1 de la DIAN (etiquetas y fuente de verdad)
+  eval.py         # evaluación contra facturas reales
   pipeline.py     # orquestación y decisión automatico / revision / rechazado
   resaltado.py    # ubica la evidencia en la imagen (PDF nativo u OCR)
   api.py          # FastAPI

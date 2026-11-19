@@ -11,6 +11,7 @@ from .models import FacturaExtraida, Hallazgo, Severidad
 
 TOLERANCIA = Decimal("1.00")  # pesos, por redondeos
 TARIFAS_IVA = (Decimal("0.19"), Decimal("0.05"), Decimal("0"))
+MAX_TARIFA_IVA = Decimal("0.19")
 UMBRAL_GROUNDING = 90
 
 _PESOS_DIAN = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71]
@@ -25,8 +26,9 @@ def digito_verificacion(nit: str) -> int:
 
 
 def nit_valido(nit_con_dv: str) -> bool:
+    """Valida el DV si viene. Una cédula (persona natural) no lleva DV: se acepta."""
     if "-" not in nit_con_dv:
-        return False
+        return bool(re.fullmatch(r"[\d.]{5,15}", nit_con_dv))
     base, dv = nit_con_dv.rsplit("-", 1)
     return dv.isdigit() and digito_verificacion(base) == int(dv)
 
@@ -60,9 +62,11 @@ def verificar_grounding(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
     """Cada evidencia debe existir en el texto fuente y contener el valor."""
     hallazgos = []
     fuente = _norm(texto)
-    for nombre in f.CAMPOS_CRITICOS:
+    for nombre in f.CAMPOS:
         campo = getattr(f, nombre)
         if campo.valor is None:
+            if nombre not in f.CAMPOS_CRITICOS:
+                continue
             hallazgos.append(
                 Hallazgo(regla="campo_faltante", campo=nombre, severidad=Severidad.ERROR,
                          mensaje=f"{nombre}: no se pudo leer")
@@ -99,11 +103,17 @@ def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallaz
         h.append(Hallazgo(regla=regla, campo=campo, severidad=Severidad.ADVERTENCIA, mensaje=msg))
 
     sub, iva, tot = f.subtotal.valor, f.iva.valor, f.total.valor
-    if None not in (sub, iva, tot):
-        if abs(sub + iva - tot) > TOLERANCIA:
-            err("suma_total", f"subtotal + IVA ({sub + iva}) != total ({tot})", "total")
-        if sub > 0 and not any(abs(sub * t - iva) <= TOLERANCIA for t in TARIFAS_IVA):
-            err("tarifa_iva", f"IVA {iva} no corresponde a 19%, 5% ni 0% de {sub}", "iva")
+    if sub is not None and tot is not None:
+        esperado = sub + (iva or 0)
+        if abs(esperado - tot) > TOLERANCIA:
+            detalle = f"subtotal + IVA ({esperado})" if iva is not None else f"subtotal ({sub}) sin IVA"
+            err("suma_total", f"{detalle} != total ({tot})", "total")
+    if sub and iva is not None:
+        if iva > sub * MAX_TARIFA_IVA + TOLERANCIA:
+            err("tarifa_iva", f"IVA {iva} supera el 19% de {sub}", "iva")
+        elif not any(abs(sub * t - iva) <= TOLERANCIA for t in TARIFAS_IVA):
+            # posible con ítems mixtos (gravados + excluidos): no bloquea
+            warn("tarifa_iva_mixta", f"IVA {iva} no es 19/5/0% exacto de {sub}: ítems mixtos?", "iva")
 
     if f.lineas and sub is not None:
         suma = sum(l.total for l in f.lineas)
@@ -129,7 +139,7 @@ def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallaz
 def comparar(a: FacturaExtraida, b: FacturaExtraida) -> list[Hallazgo]:
     """Consenso: dos extracciones independientes deben coincidir en lo crítico."""
     h = []
-    for nombre in a.CAMPOS_CRITICOS:
+    for nombre in a.CAMPOS:
         va, vb = getattr(a, nombre).valor, getattr(b, nombre).valor
         if va is not None and vb is not None and va != vb:
             h.append(Hallazgo(regla="sin_consenso", campo=nombre, severidad=Severidad.ERROR,

@@ -6,3 +6,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# facturas reales (datos personales): nunca al repo
+eval_privado/
+*.zip
+resultados_eval*.json

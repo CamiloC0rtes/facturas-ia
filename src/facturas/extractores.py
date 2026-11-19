@@ -27,14 +27,26 @@ class Extractor(Protocol):
 
 
 def parse_monto(s: str | None) -> Decimal | None:
-    """'$ 1.190.000,50' -> Decimal('1190000.50') (formato colombiano)."""
-    if not s:
+    """Convierte montos en formato colombiano o estadounidense a Decimal.
+
+    '$ 1.190.000' -> 1190000      '630.672,27' -> 630672.27
+    '750,500.00'  -> 750500.00    '114,559'    -> 114559      '52689.08' -> 52689.08
+    """
+    if s is None:
         return None
-    limpio = re.sub(r"[^\d.,]", "", s)
-    if "," in limpio:
-        limpio = limpio.replace(".", "").replace(",", ".")
-    else:
-        limpio = limpio.replace(".", "")
+    limpio = re.sub(r"[^\d.,]", "", str(s))
+    if not limpio or not limpio[0].isdigit():
+        return None
+    if "," in limpio and "." in limpio:  # el último separador es el decimal
+        dec, mil = (",", ".") if limpio.rfind(",") > limpio.rfind(".") else (".", ",")
+        limpio = limpio.replace(mil, "").replace(dec, ".")
+    elif "," in limpio or "." in limpio:
+        sep = "," if "," in limpio else "."
+        partes = limpio.split(sep)
+        if len(partes) > 2 or len(partes[-1]) == 3:  # 1.190.000 / 114,559 -> miles
+            limpio = "".join(partes)
+        else:  # 18739,50 / 52689.08 -> decimales
+            limpio = ".".join(partes)
     try:
         return Decimal(limpio)
     except InvalidOperation:
@@ -92,18 +104,47 @@ class ExtractorReglas:
 
 # ------------------------------------------------------------ extractor LLM
 
-# Cambia la versión cada vez que se modifique el prompt o el esquema,
-# para poder comparar resultados entre versiones (ver ROADMAP.md).
-PROMPT_VERSION = "v1"
-
-PROMPT_SISTEMA = """Eres un extractor de datos de facturas colombianas.
+# Versionado de prompts: cada cambio crea una versión nueva y se compara contra la
+# anterior con `python -m facturas.eval` (ver ROADMAP.md, v0.3).
+PROMPTS = {
+    "v1": """Eres un extractor de datos de facturas colombianas.
 Reglas estrictas:
 1. Extrae SOLO lo que aparece literalmente en el texto. No calcules, no deduzcas, no completes.
 2. Si un valor no aparece o es ilegible, devuelve valor = null y evidencia = null.
 3. Para cada valor, en `evidencia` copia EXACTAMENTE el fragmento del texto (máx. 80 caracteres)
    donde aparece. Si no puedes copiar un fragmento literal, el valor debe ser null.
 4. Montos como string tal como aparecen (ej. "1.190.000"). Fechas en formato YYYY-MM-DD.
-5. NIT con dígito de verificación, ej. "900.123.456-8"."""
+5. NIT con dígito de verificación, ej. "900.123.456-8".""",
+    # v2: definiciones de campo a partir de errores vistos en facturas reales
+    # (número de resolución confundido con número de factura, NIT del proveedor
+    # tecnológico, formatos de monto con coma decimal, facturas sin IVA).
+    "v2": """Eres un extractor de datos de facturas electrónicas colombianas (DIAN).
+
+Reglas estrictas:
+1. Extrae SOLO lo que aparece literalmente en el texto. No calcules, no sumes, no deduzcas.
+2. Si un valor no aparece o es ilegible, devuelve valor = null y evidencia = null.
+3. En `evidencia` copia EXACTAMENTE el fragmento del texto (máx. 80 caracteres) que contiene
+   el valor. Si no puedes copiar un fragmento literal que lo contenga, el valor debe ser null.
+
+Definición de cada campo:
+- numero: número de la factura con su prefijo (ej. "SETP990001234", "FE-1024").
+  NO es el número de resolución de facturación, ni el CUFE, ni un número de pedido.
+- nit_emisor: NIT de quien vende y emite la factura.
+- nit_cliente: NIT o cédula del adquiriente (comprador). Puede no tener dígito de verificación.
+  NO confundas ninguno de los dos con el NIT del proveedor tecnológico de facturación.
+- fecha_emision: fecha de expedición de la factura. NO la de la resolución ni la de validación.
+- fecha_vencimiento: fecha de vencimiento o límite de pago. null si no aparece.
+- subtotal: valor antes de impuestos (subtotal, valor bruto, base), después de descuentos.
+- iva: valor total del IVA. null si la factura no muestra IVA.
+- total: valor total a pagar.
+
+Formato:
+- Montos como string exactamente como aparecen (ej. "750,500.00", "1.190.000", "630.672,27").
+- Fechas en formato YYYY-MM-DD.
+- NIT tal como aparece, con dígito de verificación si lo tiene (ej. "900.123.456-8").""",
+}
+PROMPT_VERSION = os.getenv("FACTURAS_PROMPT", "v2")
+PROMPT_SISTEMA = PROMPTS[PROMPT_VERSION]
 
 _CAMPO_SCHEMA = {
     "type": "object",
@@ -127,20 +168,20 @@ TOOL = {
 
 class ExtractorClaude:
     nombre = "claude"
-    prompt_version = PROMPT_VERSION
 
-    def __init__(self, modelo: str | None = None, client=None):
+    def __init__(self, modelo: str | None = None, client=None, prompt_version: str | None = None):
         import anthropic
 
         self.client = client or anthropic.Anthropic()
         self.modelo = modelo or os.getenv("FACTURAS_MODELO", "claude-sonnet-5-5")
+        self.prompt_version = prompt_version or PROMPT_VERSION
 
     def extraer(self, texto: str) -> FacturaExtraida:
         resp = self.client.messages.create(
             model=self.modelo,
             max_tokens=1500,
             temperature=0,
-            system=PROMPT_SISTEMA,
+            system=PROMPTS[self.prompt_version],
             tools=[TOOL],
             tool_choice={"type": "tool", "name": TOOL["name"]},
             messages=[{"role": "user", "content": f"<factura>\n{texto}\n</factura>"}],
@@ -157,9 +198,9 @@ class ExtractorOpenAI:
     """Mismo contrato que ExtractorClaude, usando Structured Outputs (schema estricto)."""
 
     nombre = "openai"
-    prompt_version = PROMPT_VERSION
 
-    def __init__(self, modelo: str | None = None, client=None):
+    def __init__(self, modelo: str | None = None, client=None, prompt_version: str | None = None):
+        self.prompt_version = prompt_version or PROMPT_VERSION
         if client is None:
             from openai import OpenAI
 
@@ -172,7 +213,7 @@ class ExtractorOpenAI:
             model=self.modelo,
             temperature=0,
             messages=[
-                {"role": "system", "content": PROMPT_SISTEMA},
+                {"role": "system", "content": PROMPTS[self.prompt_version]},
                 {"role": "user", "content": f"<factura>\n{texto}\n</factura>"},
             ],
             response_format={
@@ -191,14 +232,15 @@ SCHEMA_ESTRICTO = {
 }
 
 
-def extractor_llm(proveedor: str | None = None):
+def extractor_llm(proveedor: str | None = None, modelo: str | None = None,
+                  prompt_version: str | None = None):
     """Elige el LLM según el argumento o las API keys disponibles."""
     proveedor = proveedor or ("openai" if os.getenv("OPENAI_API_KEY") else
                               "claude" if os.getenv("ANTHROPIC_API_KEY") else None)
     if proveedor == "openai":
-        return ExtractorOpenAI()
+        return ExtractorOpenAI(modelo=modelo, prompt_version=prompt_version)
     if proveedor == "claude":
-        return ExtractorClaude()
+        return ExtractorClaude(modelo=modelo, prompt_version=prompt_version)
     return None
 
 
