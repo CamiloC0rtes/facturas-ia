@@ -96,10 +96,18 @@ def cargar_cache(ruta: Path) -> tuple[dict[str, FacturaExtraida], dict]:
     return cache, datos["resumen"].get("config", {})
 
 
+def _progreso(i: int, n: int, caso: str) -> None:
+    import sys
+
+    print(f"\r  procesando {i}/{n} ({caso})...", end="", file=sys.stderr, flush=True)
+
+
 def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] | None = None,
             config_cache: dict | None = None) -> list[Fila]:
     filas = []
-    for caso in sorted(p for p in carpeta.iterdir() if p.is_dir()):
+    casos = sorted(p for p in carpeta.iterdir() if p.is_dir())
+    for i, caso in enumerate(casos, 1):
+        _progreso(i, len(casos), caso.name)
         pdfs, xmls = list(caso.glob("*.pdf")), list(caso.glob("*.xml"))
         if not pdfs or not xmls:
             continue

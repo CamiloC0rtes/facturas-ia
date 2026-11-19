@@ -12,6 +12,10 @@ import pymupdf as fitz
 import numpy as np
 import pytesseract
 
+# MuPDF imprime avisos de fuentes embebidas que no afectan la extracción
+# (p. ej. "FT_New_Memory_Face(Calibri): unknown file format").
+fitz.TOOLS.mupdf_display_errors(False)
+
 MIN_CHARS_NATIVO = 50
 DPI_RENDER = 300
 
