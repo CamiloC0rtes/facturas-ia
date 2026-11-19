@@ -93,3 +93,41 @@ def leer_factura_xml(xml: bytes) -> FacturaExtraida:
 
 def cufe(xml: bytes) -> str | None:
     return _txt(_invoice(xml), "cbc:UUID")
+
+
+# ------------------------------------------------------------------ v0.4
+APP_RESPONSE_NS = "urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2"
+VALIDADO = "02"  # código DIAN de la respuesta de aplicación: documento validado
+
+
+def respuesta_dian(*xmls: bytes) -> str | None:
+    """Código de la respuesta de la DIAN (ApplicationResponse) si viene en el paquete.
+
+    Suele estar embebida en el AttachedDocument; algunos emisores la mandan como archivo
+    aparte (p. ej. `.dian`). '02' = documento validado por la DIAN.
+    """
+    for xml in xmls:
+        try:
+            raiz = ET.fromstring(xml)
+        except Exception:  # noqa: BLE001 - un archivo que no es XML simplemente se ignora
+            continue
+        candidatos = [raiz] if raiz.tag == f"{{{APP_RESPONSE_NS}}}ApplicationResponse" else []
+        for desc in raiz.iterfind(".//cbc:Description", NS):
+            if desc.text and "<ApplicationResponse" in desc.text:
+                try:
+                    candidatos.append(ET.fromstring(desc.text.strip().encode("utf-8")))
+                except Exception:  # noqa: BLE001
+                    continue
+        for ar in candidatos:
+            codigo = _txt(ar, "cac:DocumentResponse/cac:Response/cbc:ResponseCode")
+            if codigo:
+                return codigo
+    return None
+
+
+def es_factura_xml(xml: bytes) -> bool:
+    try:
+        _invoice(xml)
+        return True
+    except Exception:  # noqa: BLE001
+        return False

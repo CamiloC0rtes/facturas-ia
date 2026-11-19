@@ -2,8 +2,14 @@
 
 Lectura de facturas PDF (nativas o escaneadas) con IA y generación de cobros, diseñada para **no alucinar**.
 
-> El LLM solo **extrae** y está obligado a citar de dónde sacó cada valor.
-> El código **verifica** cada valor. Y el cobro lo calcula una lógica determinística, **nunca el LLM**.
+> **Si la factura trae el XML de la DIAN, ese es la fuente de verdad: sin OCR ni IA.**
+> Si solo hay PDF, el LLM **extrae** y está obligado a citar de dónde sacó cada valor; el código **verifica** cada valor.
+> En ambos casos el cobro lo calcula una lógica determinística, **nunca el LLM**.
+
+| Sobre 54 facturas electrónicas reales (33 emisores) | Automatización | Falsos aprobados monetarios |
+|---|---|---|
+| **ZIP con XML DIAN (v0.4)** | **100 %** | **0** |
+| Solo PDF · gpt-4.1-mini · prompt v3 | 56 % | 0 |
 
 ```
 $ python -m facturas.cli samples/*.pdf
@@ -30,6 +36,22 @@ Sube un PDF o elige un ejemplo y elige el extractor (reglas, OpenAI o Claude). L
 - los campos extraídos, los hallazgos, la decisión y el cobro
 - el extractor, el modelo y la versión de prompt que se usaron
 - un formulario de **revisión humana**: los valores corregidos vuelven a pasar por las reglas antes de generar el cobro
+
+## Las dos fuentes (v0.4)
+
+Cada factura electrónica colombiana llega en un ZIP con el PDF (representación gráfica) y el **XML firmado** (`AttachedDocument` con la `Invoice` UBL 2.1 y, casi siempre, la respuesta de validación de la DIAN).
+
+- **Camino XML** (`fuente = xml_dian`): datos tomados del XML; se exige respuesta DIAN `02` (validado) si viene, se verifica que el PDF tenga **el mismo CUFE** (que sea la representación de ese XML) y que los totales cuadren. Funciona aunque el PDF venga con clave (Claro).
+- **Camino PDF** (`fuente = pdf_llm`): para documentos sin XML. Es donde está todo el trabajo de prompts y reglas de abajo.
+- **Deduplicación por factura**, no por archivo: `(NIT emisor, número)` solo genera un cobro aunque llegue dos veces.
+- El ZIP se lee en memoria con límites de archivos y tamaño (zip bombs), y los XML con `defusedxml`.
+
+**Por qué importa:** en la evaluación, el PDF de Falabella rotula como «TOTAL A PAGAR» el valor *sin* IVA y el de Adidas rotula el número de factura como «Número de Caja». Ningún prompt arregla eso; el XML sí.
+
+```bash
+python -m facturas.cli correo/*.zip            # ZIP tal como llega
+python -m facturas.eval eval_privado --fuente xml
+```
 
 ## Evaluación con facturas reales
 
@@ -93,18 +115,21 @@ Ver [ROADMAP.md](ROADMAP.md) para la salida objetivo, las métricas de éxito y 
 
 ```mermaid
 flowchart TD
-    A[PDF: nativo / escaneado / foto] --> B[API FastAPI]
-    B --> C{¿Tiene texto?}
-    C -- sí --> D[Texto nativo<br/>PyMuPDF]
-    C -- no --> E{Gate de calidad<br/>varianza Laplaciano}
+    A[ZIP del correo / XML / PDF] --> B{¿Trae XML DIAN?}
+    B -- sí --> X[Leer Invoice UBL 2.1<br/>fuente de verdad]
+    X --> XV[Respuesta DIAN = 02 validado<br/>CUFE del PDF = CUFE del XML<br/>suma de totales]
+    XV --> D{¿Errores?}
+    B -- no --> C{¿PDF con texto?}
+    C -- sí --> T[Texto nativo<br/>PyMuPDF]
+    C -- no --> E{Gate de calidad}
     E -- borrosa --> R[RECHAZADO<br/>pedir reenvío]
-    E -- ok --> F[Preproceso OpenCV<br/>denoise · binarizar · deskew]
-    F --> G[OCR Tesseract]
-    D --> H[Extractor<br/>OpenAI / Claude con schema estricto · o reglas]
+    E -- ok --> G[OCR Tesseract]
+    T --> H[Extractor LLM<br/>schema estricto + evidencia]
     G --> H
-    H --> I[Validación determinística<br/>grounding · sumas · IVA · DV NIT · fechas · consenso]
-    I -- errores --> V[REVISIÓN humana]
-    I -- todo ok --> K[Motor de cobros<br/>borrador]
+    H --> I[Validación: grounding por dígitos · roles ·<br/>fechas d/m vs m/d · rótulos · sumas]
+    I --> D
+    D -- sí --> V[REVISIÓN humana]
+    D -- no --> K[Cobro en borrador<br/>1 factura = 1 cobro]
 ```
 
 ## Cómo evita alucinaciones

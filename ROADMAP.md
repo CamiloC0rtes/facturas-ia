@@ -33,7 +33,7 @@ PDF nativo vs OCR, gate de calidad, extractor de reglas, extractores OpenAI y Cl
 ## v0.2 Interfaz visual ✅
 Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campos, hallazgos, cobro, **revisión humana** con revalidación, y trazabilidad de extractor, modelo y versión de prompt.
 
-## v0.3 Evaluación (en curso)
+## v0.3 Evaluación ✅
 - ✅ `python -m facturas.eval <carpeta> [--llm openai] [--prompt v1|v2] [--modelo X]`: exactitud por campo, falsos aprobados, tasa de automatización y latencia
 - ✅ Etiquetado automático con el **XML DIAN** que viene en el ZIP de cada factura electrónica (`dian_xml.py`): no hay que etiquetar a mano
 - ✅ Set privado inicial: 21 facturas reales de 17 emisores (retail, gimnasios, cine, Cámara de Comercio…), fuera del repo
@@ -55,7 +55,7 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
   - **número de factura rotulado como «Número de Caja»** (Adidas): el LLM tomó otro código. Sin solución determinística desde el PDF → v0.4 (XML y asunto del correo, que por norma DIAN trae NIT;emisor;número)
 - ✅ La evaluación separa **falsos aprobados monetarios** (total o NIT mal: se cobra mal o a quien no es) de los de referencia (número o fecha)
 - ✅ Re-medido con `--reusar`: `v3` **0 falsos aprobados monetarios**, 1 de referencia (Adidas), 56 % de automatización; `v2` dejó pasar r40 (Falabella: encabezados «DESCUENTOS» e «IMPUESTO» juntos en la evidencia) → regla `rotulo_ambiguo`
-- ⏳ Siguiente: **v0.4 XML DIAN como fuente principal** (todas las facturas del set lo traen; resuelve Falabella, Adidas y los PDF con clave de Claro)
+- ✅ Siguiente → hecho en v0.4
 
 **Lección de esta ronda:** el PDF no siempre dice lo mismo que el XML legal (Falabella). Para facturas electrónicas, el XML debe ser la fuente de verdad; el LLM sobre el PDF es el plan B para documentos sin XML.
 - ⏳ Próximo prompt `v3`: prefijo del número de factura (`TDCR28625`, no `28625`) y subtotal antes de IVA en facturas con precios IVA incluido
@@ -85,12 +85,19 @@ Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que s�
 | Se confunde el número de resolución o el NIT del proveedor tecnológico con los de la factura | Prompt `v2` con definición explícita de cada campo |
 | Fecha de vencimiento `0001-01-01` como valor vacío en el XML | Se trata como vacío |
 
-## v0.4 Factura electrónica DIAN
-- Leer el XML UBL 2.1 (AttachedDocument) cuando venga: es la fuente de verdad y no necesita IA
-- Decodificar el QR (CUFE, NIT, total) y cruzarlo con lo extraído
-- Campo `fuente` por valor
+## v0.4 Factura electrónica DIAN ✅
+- ✅ ZIP del correo leído en memoria y con límites (`paquete.py`); XML con cualquier extensión (`.xml`, `.fe`, `.dian`), ZIP anidado
+- ✅ XML como **fuente principal**; el LLM sobre el PDF queda como respaldo para documentos sin XML
+- ✅ Respuesta de la DIAN (`ApplicationResponse`): `02` = validado; otro código bloquea; si no viene, advertencia (53 de 54 la traen embebida)
+- ✅ Cruce **CUFE del PDF = CUFE del XML** (el CUFE suele venir partido en dos líneas): en las 52 facturas con PDF legible coincide
+- ✅ Deduplicación por **(NIT emisor, número)**: una factura = un cobro
+- ✅ UI, API y CLI aceptan ZIP
+- **Resultado sobre 54 facturas reales: 100 % de automatización, 0 falsos aprobados** (vs. 56 % solo con PDF). La exactitud del camino XML es circular (las etiquetas salen del mismo XML): lo que mide la evaluación es cobertura y decisiones; el parser se valida con tests y con el cruce de CUFE
+- ⏳ Pendiente: verificar la **firma XAdES** del XML (hoy se confía en la respuesta de la DIAN embebida) y leer el **QR** del PDF cuando no hay XML
+- ⏳ Pendiente: asunto del correo (formato DIAN `NIT;Emisor;Número;01;…`) como tercera fuente para cruzar el número
 
-## v0.5 Prompt engineering v2
+## v0.5 Prompt engineering (camino PDF)
+- ✅ (adelantado en v0.3) prompts `v2` y `v3`, campos descuentos, otros impuestos y cargos
 - Few-shot con 2–3 formatos de factura distintos (solo si la evaluación muestra errores de formato)
 - Ampliar el esquema: líneas, retenciones (ReteFuente, ReteIVA, ReteICA), CUFE, moneda
 - Validación de líneas contra el subtotal

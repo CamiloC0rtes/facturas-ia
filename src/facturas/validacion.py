@@ -141,7 +141,9 @@ def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallaz
             partes += ["- descuentos"] if f.descuentos.valor else []
             err("suma_total", f"{' + '.join(partes)} = {esperado} != total ({tot})", "total")
     if sub and iva is not None:
-        if iva > sub * MAX_TARIFA_IVA + TOLERANCIA:
+        # la base gravable puede diferir un poco del subtotal (Claro: 116.521 vs 116.510);
+        # esta regla busca errores gruesos como subtotal e IVA intercambiados
+        if iva > sub * MAX_TARIFA_IVA + TOLERANCIA_SUMA:
             err("tarifa_iva", f"IVA {iva} supera el 19% de {sub}", "iva")
         elif not any(abs(sub * t - iva) <= TOLERANCIA for t in TARIFAS_IVA):
             # posible con ítems mixtos (gravados + excluidos): no bloquea

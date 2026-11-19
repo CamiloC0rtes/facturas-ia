@@ -10,7 +10,7 @@ from .extractores import ExtractorReglas, extractor_llm
 from .models import Resultado
 from .pipeline import Pipeline
 
-app = FastAPI(title="facturas-ia", version="0.1.0")
+app = FastAPI(title="facturas-ia", version="0.4.0")
 
 
 def _crear_pipeline() -> Pipeline:
@@ -37,6 +37,13 @@ def health() -> dict:
 
 @app.post("/facturas", response_model=Resultado, response_model_exclude={"texto"})
 async def subir_factura(archivo: UploadFile = File(...)) -> Resultado:
-    if not (archivo.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(415, "Solo se aceptan PDF")
-    return pipeline.procesar(await archivo.read(), archivo.filename)
+    """Acepta el ZIP de la factura electrónica (PDF + XML DIAN), solo el XML o solo el PDF."""
+    nombre = (archivo.filename or "").lower()
+    datos = await archivo.read()
+    if nombre.endswith(".zip"):
+        return pipeline.procesar_zip(datos, archivo.filename)
+    if nombre.endswith(".xml"):
+        return pipeline.procesar(None, archivo.filename, xml=datos)
+    if nombre.endswith(".pdf"):
+        return pipeline.procesar(datos, archivo.filename)
+    raise HTTPException(415, "Se acepta .zip (PDF + XML DIAN), .xml o .pdf")

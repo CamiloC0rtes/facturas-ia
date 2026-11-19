@@ -105,7 +105,7 @@ def _progreso(i: int, n: int, caso: str) -> None:
 
 
 def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] | None = None,
-            config_cache: dict | None = None) -> list[Fila]:
+            config_cache: dict | None = None, usar_xml: bool = False) -> list[Fila]:
     filas = []
     casos = sorted(p for p in carpeta.iterdir() if p.is_dir())
     for i, caso in enumerate(casos, 1):
@@ -121,7 +121,10 @@ def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] |
                                                           cfg.get("prompt")), hoy=date.today())
         else:
             pipe = pipeline_factory()
-        r = pipe.procesar(pdfs[0].read_bytes(), caso.name)
+        if usar_xml:
+            r = pipe.procesar(pdfs[0].read_bytes(), caso.name, xml=xmls[0].read_bytes())
+        else:
+            r = pipe.procesar(pdfs[0].read_bytes(), caso.name)
         seg = time.perf_counter() - t0
 
         fila = Fila(caso.name, r.decision.value, round(seg, 2),
@@ -181,6 +184,10 @@ def main() -> None:
     ap.add_argument("--modelo")
     ap.add_argument("--prompt", help="versión de prompt (v1, v2, ...)")
     ap.add_argument("--consenso", action="store_true", help="usar reglas como segunda opinión")
+    ap.add_argument("--fuente", choices=["pdf", "xml"], default="pdf",
+                    help="pdf: LLM sobre el PDF (por defecto). xml: camino v0.4 con el XML DIAN. "
+                         "Ojo: con xml las etiquetas salen del mismo XML, así que la exactitud es "
+                         "circular; lo que se mide es cobertura y decisiones.")
     ap.add_argument("--salida", type=Path, help="guardar detalle y extracciones en JSON")
     ap.add_argument("--reusar", type=Path,
                     help="JSON de una corrida anterior: re-valida sus extracciones sin llamar al LLM")
@@ -201,7 +208,7 @@ def main() -> None:
         raise SystemExit(f"No existe la carpeta '{args.carpeta}'. Descomprime ahí las facturas "
                          "(una subcarpeta por factura con su .pdf y su .xml).")
     cache, config_cache = cargar_cache(args.reusar) if args.reusar else (None, None)
-    filas = evaluar(args.carpeta, factory, cache, config_cache)
+    filas = evaluar(args.carpeta, factory, cache, config_cache, usar_xml=args.fuente == "xml")
     if not filas:
         raise SystemExit(f"No hay casos (carpetas con .pdf y .xml) en {args.carpeta}")
 
@@ -217,7 +224,9 @@ def main() -> None:
                 print(f"          {campo}: {ev}")
 
     res = resumen(filas)
-    if config_cache:
+    if args.fuente == "xml":
+        res["config"] = {"fuente": "xml_dian", "nota": "exactitud circular: etiquetas y extracción salen del mismo XML"}
+    elif config_cache:
         res["config"] = {**config_cache, "reusado_de": str(args.reusar)}
     else:
         p = factory()

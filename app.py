@@ -17,6 +17,7 @@ from facturas.extractores import (
     ExtractorReglas,
 )
 from facturas.models import Campo, Decision, FacturaExtraida, Severidad
+from facturas.paquete import PaqueteInvalido, leer_zip
 from facturas.pipeline import Pipeline, revisar
 from facturas.resaltado import imagen_con_evidencias
 
@@ -83,21 +84,31 @@ st.title("Lector de facturas")
 st.caption("La IA extrae, el código verifica y el cobro lo calcula una regla, nunca el LLM.")
 
 c1, c2 = st.columns([2, 1])
-subido = c1.file_uploader("Sube una factura en PDF", type=["pdf"])
+subido = c1.file_uploader("Sube el ZIP de la factura electrónica (PDF + XML) o solo el PDF",
+                          type=["zip", "pdf"],
+                          help="Con el ZIP se usa el XML de la DIAN como fuente de verdad (sin IA). "
+                               "Con solo el PDF se usa el extractor elegido.")
 ejemplos = sorted(p.name for p in SAMPLES.glob("*.pdf")) if SAMPLES.exists() else []
 ejemplo = c2.selectbox("…o usa un ejemplo", ["—"] + ejemplos)
 
-pdf, nombre = None, None
+pdf, nombre, es_zip = None, None, False
 if subido:
-    pdf, nombre = subido.getvalue(), subido.name
+    pdf, nombre, es_zip = subido.getvalue(), subido.name, subido.name.lower().endswith(".zip")
 elif ejemplo != "—":
     pdf, nombre = (SAMPLES / ejemplo).read_bytes(), ejemplo
 
 if pdf and st.button("Procesar", type="primary"):
     with st.spinner("Leyendo, extrayendo y validando…"):
         try:
-            st.session_state.resultado = crear_pipeline().procesar(pdf, nombre)
-            st.session_state.pdf = pdf
+            if es_zip:
+                st.session_state.resultado = crear_pipeline().procesar_zip(pdf, nombre)
+                try:
+                    st.session_state.pdf = leer_zip(pdf).pdf
+                except PaqueteInvalido:
+                    st.session_state.pdf = None
+            else:
+                st.session_state.resultado = crear_pipeline().procesar(pdf, nombre)
+                st.session_state.pdf = pdf
         except Exception as e:  # p. ej. API key inválida
             st.error(f"No se pudo procesar: {e}")
 
@@ -115,11 +126,14 @@ else:
     st.error("Rechazada: " + "; ".join(h.mensaje for h in r.hallazgos))
 
 m = st.columns(5)
-m[0].metric("Lectura", r.metodo_texto)
-m[1].metric("Nitidez", f"{r.calidad:.0f}" if r.calidad is not None else "n/a")
+m[0].metric("Fuente", {"xml_dian": "XML DIAN", "pdf_llm": "PDF"}.get(r.fuente, "—"))
+m[1].metric("Lectura", r.metodo_texto)
 m[2].metric("Extractor", r.extractor or "—")
 m[3].metric("Modelo", r.modelo or "—")
 m[4].metric("Prompt", r.prompt_version or "—")
+if r.fuente == "xml_dian":
+    st.caption("Los datos salen del XML firmado de la DIAN: no se usó OCR ni IA. "
+               "El PDF solo se usa para verificar que corresponde al XML (mismo CUFE).")
 
 errores_por_campo: dict[str, list[str]] = {}
 for h in r.hallazgos:
@@ -129,10 +143,19 @@ for h in r.hallazgos:
 izq, der = st.columns([1, 1])
 with izq:
     st.subheader("Documento")
-    st.image(imagen_con_evidencias(st.session_state.pdf, r.factura, r.metodo_texto,
-                                   set(errores_por_campo)),
-             caption="Verde: evidencia verificada · Rojo: campo con error",
-             use_container_width=True)
+    if st.session_state.get("pdf") and r.fuente != "xml_dian":
+        st.image(imagen_con_evidencias(st.session_state.pdf, r.factura, r.metodo_texto,
+                                       set(errores_por_campo)),
+                 caption="Verde: evidencia verificada · Rojo: campo con error",
+                 use_container_width=True)
+    elif st.session_state.get("pdf"):
+        try:
+            st.image(imagen_con_evidencias(st.session_state.pdf, None, "nativo"),
+                     caption="Representación gráfica (PDF)", use_container_width=True)
+        except Exception:  # noqa: BLE001 - PDF con clave: el XML basta
+            st.info("El PDF está protegido con clave; se usó solo el XML.")
+    else:
+        st.info("El paquete no trae PDF; se usó solo el XML.")
 
 with der:
     if r.factura:

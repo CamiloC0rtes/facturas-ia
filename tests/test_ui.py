@@ -36,3 +36,15 @@ def test_ui_revision_y_correccion():
     total.set_value("1190000")
     at.button[-1].click().run()  # botón del formulario
     assert any("Cobro generado" in s.value for s in at.success)
+
+
+def test_api_acepta_zip(tmp_path):
+    from fastapi.testclient import TestClient
+    from test_v04_xml import PDF_OK, attached_con_respuesta, zip_de
+
+    from facturas import api
+
+    r = TestClient(api.app).post("/facturas", files={"archivo": (
+        "f.zip", zip_de(f_pdf=PDF_OK, f_xml=attached_con_respuesta()), "application/zip")})
+    assert r.status_code == 200
+    assert r.json()["fuente"] == "xml_dian" and r.json()["decision"] == "automatico"
