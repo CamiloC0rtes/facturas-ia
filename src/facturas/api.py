@@ -5,7 +5,7 @@ import os
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
-from .extractores import ExtractorClaude, ExtractorReglas
+from .extractores import ExtractorReglas, extractor_llm
 from .models import Resultado
 from .pipeline import Pipeline
 
@@ -13,9 +13,11 @@ app = FastAPI(title="facturas-ia", version="0.1.0")
 
 
 def _crear_pipeline() -> Pipeline:
-    if os.getenv("ANTHROPIC_API_KEY"):
+    # FACTURAS_LLM=openai|claude; si no se define, se elige según la API key disponible
+    llm = extractor_llm(os.getenv("FACTURAS_LLM"))
+    if llm:
         # LLM como extractor principal y reglas como segunda opinión (consenso)
-        return Pipeline(extractor=ExtractorClaude(), segundo=ExtractorReglas())
+        return Pipeline(extractor=llm, segundo=ExtractorReglas())
     return Pipeline(extractor=ExtractorReglas())
 
 

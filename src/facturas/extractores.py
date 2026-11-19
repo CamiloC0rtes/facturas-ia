@@ -143,15 +143,67 @@ class ExtractorClaude:
 
     @staticmethod
     def _a_modelo(crudo: dict) -> FacturaExtraida:
-        if isinstance(crudo, str):
-            crudo = json.loads(crudo)
-        datos = {}
-        for campo in _CAMPOS:
-            c = crudo.get(campo) or {}
-            v = c.get("valor")
-            if campo in ("subtotal", "iva", "total"):
-                v = parse_monto(v)
-            elif campo.startswith("fecha"):
-                v = parse_fecha(v)
-            datos[campo] = Campo(valor=v, evidencia=c.get("evidencia") if v is not None else None)
-        return FacturaExtraida(**datos)
+        return a_modelo(crudo)
+
+
+class ExtractorOpenAI:
+    """Mismo contrato que ExtractorClaude, usando Structured Outputs (schema estricto)."""
+
+    nombre = "openai"
+
+    def __init__(self, modelo: str | None = None, client=None):
+        if client is None:
+            from openai import OpenAI
+
+            client = OpenAI()
+        self.client = client
+        self.modelo = modelo or os.getenv("FACTURAS_MODELO_OPENAI", "gpt-4.1-mini")
+
+    def extraer(self, texto: str) -> FacturaExtraida:
+        resp = self.client.chat.completions.create(
+            model=self.modelo,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": PROMPT_SISTEMA},
+                {"role": "user", "content": f"<factura>\n{texto}\n</factura>"},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "factura", "strict": True, "schema": SCHEMA_ESTRICTO},
+            },
+        )
+        return a_modelo(json.loads(resp.choices[0].message.content))
+
+
+SCHEMA_ESTRICTO = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {c: {**_CAMPO_SCHEMA, "additionalProperties": False} for c in _CAMPOS},
+    "required": _CAMPOS,
+}
+
+
+def extractor_llm(proveedor: str | None = None):
+    """Elige el LLM según el argumento o las API keys disponibles."""
+    proveedor = proveedor or ("openai" if os.getenv("OPENAI_API_KEY") else
+                              "claude" if os.getenv("ANTHROPIC_API_KEY") else None)
+    if proveedor == "openai":
+        return ExtractorOpenAI()
+    if proveedor == "claude":
+        return ExtractorClaude()
+    return None
+
+
+def a_modelo(crudo: dict) -> FacturaExtraida:
+    if isinstance(crudo, str):
+        crudo = json.loads(crudo)
+    datos = {}
+    for campo in _CAMPOS:
+        c = crudo.get(campo) or {}
+        v = c.get("valor")
+        if campo in ("subtotal", "iva", "total"):
+            v = parse_monto(v)
+        elif campo.startswith("fecha"):
+            v = parse_fecha(v)
+        datos[campo] = Campo(valor=v, evidencia=c.get("evidencia") if v is not None else None)
+    return FacturaExtraida(**datos)

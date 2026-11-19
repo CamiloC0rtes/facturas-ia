@@ -1,9 +1,9 @@
-"""Uso: python -m facturas.cli samples/*.pdf [--llm]"""
+"""Uso: python -m facturas.cli samples/*.pdf [--llm openai|claude]"""
 from __future__ import annotations
 
 import argparse
 
-from .extractores import ExtractorClaude, ExtractorReglas
+from .extractores import ExtractorReglas, extractor_llm
 from .pipeline import Pipeline
 
 ICONOS = {"automatico": "OK ", "revision": "REV", "rechazado": "X  "}
@@ -12,11 +12,12 @@ ICONOS = {"automatico": "OK ", "revision": "REV", "rechazado": "X  "}
 def main() -> None:
     ap = argparse.ArgumentParser(description="Procesa facturas PDF y genera cobros")
     ap.add_argument("pdfs", nargs="+")
-    ap.add_argument("--llm", action="store_true", help="Usar Claude como extractor principal")
+    ap.add_argument("--llm", choices=["openai", "claude"],
+                    help="LLM como extractor principal (las reglas quedan como consenso)")
     ap.add_argument("--json", action="store_true", help="Imprimir el resultado completo")
     args = ap.parse_args()
 
-    p = (Pipeline(extractor=ExtractorClaude(), segundo=ExtractorReglas())
+    p = (Pipeline(extractor=extractor_llm(args.llm), segundo=ExtractorReglas())
          if args.llm else Pipeline())
 
     for ruta in args.pdfs:

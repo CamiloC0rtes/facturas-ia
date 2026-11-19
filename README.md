@@ -29,7 +29,7 @@ flowchart TD
     E -- borrosa --> R[RECHAZADO<br/>pedir reenvío]
     E -- ok --> F[Preproceso OpenCV<br/>denoise · binarizar · deskew]
     F --> G[OCR Tesseract]
-    D --> H[Extractor<br/>Claude con tool use · o reglas]
+    D --> H[Extractor<br/>OpenAI / Claude con schema estricto · o reglas]
     G --> H
     H --> I[Validación determinística<br/>grounding · sumas · IVA · DV NIT · fechas · consenso]
     I -- errores --> V[REVISIÓN humana]
@@ -41,7 +41,7 @@ flowchart TD
 | Capa | Qué hace | Archivo |
 |---|---|---|
 | Gate de calidad | Si la imagen está muy borrosa, rechaza en vez de adivinar | `texto.py` |
-| Salida forzada | Claude responde vía *tool use* con un esquema JSON fijo, `temperature=0`, y puede devolver `null` | `extractores.py` |
+| Salida forzada | El LLM responde con un esquema JSON estricto (Structured Outputs de OpenAI o *tool use* de Claude), `temperature=0`, y puede devolver `null` | `extractores.py` |
 | Evidencia obligatoria | Cada campo trae el fragmento literal de donde salió | `models.py` |
 | Grounding | La evidencia debe existir en el texto fuente (fuzzy) **y** sus números deben aparecer exactos; además, el valor debe leerse dentro de su propia evidencia | `validacion.py` |
 | Reglas fiscales | subtotal + IVA = total, tarifa IVA válida (19 / 5 / 0 %), dígito de verificación del NIT (algoritmo DIAN), fechas coherentes | `validacion.py` |
@@ -61,8 +61,9 @@ pip install -e ".[dev]"
 python scripts/generar_demo.py          # crea facturas ficticias en samples/
 python -m facturas.cli samples/*.pdf    # extractor de reglas (sin API key)
 
-export ANTHROPIC_API_KEY=...
-python -m facturas.cli samples/*.pdf --llm   # Claude + reglas como consenso
+export OPENAI_API_KEY=...                    # o ANTHROPIC_API_KEY
+python -m facturas.cli samples/*.pdf --llm openai   # LLM + reglas como consenso
+# modelo configurable: FACTURAS_MODELO_OPENAI / FACTURAS_MODELO
 
 uvicorn facturas.api:app --reload       # POST /facturas con un PDF
 pytest -q
@@ -72,7 +73,7 @@ Con Docker:
 
 ```bash
 docker build -t facturas-ia .
-docker run -p 8000:8000 -e ANTHROPIC_API_KEY facturas-ia
+docker run -p 8000:8000 -e OPENAI_API_KEY facturas-ia
 curl -F "archivo=@samples/factura_nativa.pdf" localhost:8000/facturas
 ```
 
@@ -82,7 +83,7 @@ curl -F "archivo=@samples/factura_nativa.pdf" localhost:8000/facturas
 src/facturas/
   models.py       # Campo(valor, evidencia), FacturaExtraida, Cobro, Resultado
   texto.py        # PDF nativo vs OCR, gate de calidad, preprocesamiento
-  extractores.py  # ExtractorReglas (regex) y ExtractorClaude (tool use)
+  extractores.py  # ExtractorReglas (regex), ExtractorOpenAI y ExtractorClaude
   validacion.py   # grounding, reglas fiscales, DV NIT, consenso
   pipeline.py     # orquestación y decisión automatico / revision / rechazado
   api.py          # FastAPI
