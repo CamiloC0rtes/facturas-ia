@@ -60,3 +60,26 @@ def test_numero_que_el_ocr_no_confirma_va_a_revision(escaneada):
     r = p.procesar(escaneada)
     assert r.decision == Decision.REVISION
     assert any(h.regla == "evidencia_inexistente" and h.campo == "total" for h in r.hallazgos)
+
+
+def test_tercera_lectura_confirma_pero_exige_digitos_exactos(escaneada, monkeypatch):
+    from facturas import pipeline as pl
+
+    llamadas = []
+
+    def ocr_alt(pdf):
+        llamadas.append(1)
+        return "Total a pagar: $ 1.185.000"  # la tercera lectura vio otro número
+
+    monkeypatch.setattr(pl, "ocr_alternativo", ocr_alt)
+    # el modelo dice 1.185.000; el OCR principal ve 1.190.000; la tercera lectura ve 1.185.000
+    raro = {**BIEN, "total": {"valor": "1.185.000", "evidencia": "Total a pagar: $ 1.185.000"}}
+    r = Pipeline(hoy=HOY, vision=ExtractorVisionOpenAI(client=FakeVision(raro), modelo="fake")).procesar(escaneada)
+    assert llamadas  # solo se llama cuando hace falta
+    assert not any(h.regla == "evidencia_inexistente" for h in r.hallazgos)  # confirmado exacto
+    assert any(h.regla == "suma_total" for h in r.hallazgos)  # pero la suma no cuadra: revisión
+    assert r.decision == Decision.REVISION
+
+    llamadas.clear()
+    Pipeline(hoy=HOY, vision=ExtractorVisionOpenAI(client=FakeVision(BIEN), modelo="fake")).procesar(escaneada)
+    assert not llamadas  # el OCR principal ya confirmó todo: no hay tercera lectura

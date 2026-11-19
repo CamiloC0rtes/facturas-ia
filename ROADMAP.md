@@ -110,7 +110,18 @@ Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que s�
 - ✅ Medido el LLM sobre el **texto del OCR** en el set «foto» (gpt-4.1-mini, v3): 31 % de automatización, **4 falsos aprobados** (3 de identificación, 1 de número). Todos eran **errores del OCR copiados por el LLM** —y el grounding los confirma porque el error está en el propio texto—: cédula sin el primer dígito (`000491862`), consumidor final `222…220`, DV leído como punto (`900342297.2`), `MCO` por `MC`
 - ✅ Reglas de forma de la identificación (5–10 dígitos, no empieza por 0, 12 dígitos solo si es el consumidor final genérico) y normalización del DV leído como punto. 0 falsas alarmas sobre las 54 etiquetas
 - ✅ OCR en una sola pasada (antes se corría Tesseract dos veces por página)
-- ⏳ Medir visión + OCR sobre el mismo set y re-validar ambas corridas con `--reusar`
+- ✅ Medido sobre «foto» (52 facturas, gpt-4.1-mini, v3), ambas corridas re-validadas con las reglas nuevas:
+
+  | | LLM sobre texto OCR | Visión + OCR confirma |
+  |---|---|---|
+  | Críticos correctos | 38 % | **77 %** |
+  | Falsos aprobados monetarios | 0 (eran 3 antes de las reglas de identificación) | **0** |
+  | Automatización | 27 % | 31 % |
+  | Revisiones innecesarias | 7 | 24 |
+
+- ✅ **Caso r13:** con la imagen muy degradada, la visión **inventó una factura completa y coherente** (FE-0000000001, NIT 900.123.456-7, 100.000 + 19.000 = 119.000). Ninguna regla aritmética o de forma la habría detenido; la detuvo la confirmación del OCR. *La coherencia interna no es evidencia.*
+- ✅ **Tercera lectura** cuando el OCR principal no confirma: Tesseract sobre gris sin binarizar con otros modos de segmentación, exigiendo de nuevo coincidencia **exacta** (se descartó aceptar «un dígito de diferencia»: es justo el error 1.190.000 → 1.180.000). Sobre las evidencias reales de la corrida: confirma **40 de 44** campos correctos (antes 5) y **0 de 6** valores de la factura inventada
+- ⏳ Re-medir la corrida de visión con `--reusar` (sin costo)
 
 ## v0.7 Persistencia y procesamiento asíncrono
 - PostgreSQL con índice único `(nit_emisor, numero)` para deduplicar

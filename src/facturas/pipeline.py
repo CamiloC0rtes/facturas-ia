@@ -18,7 +18,7 @@ from .dian_xml import VALIDADO, cufe, leer_factura_xml, respuesta_dian
 from .extractores import Extractor, ExtractorReglas
 from .models import Cobro, Decision, FacturaExtraida, Hallazgo, Resultado, Severidad
 from .paquete import PaqueteInvalido, leer_zip
-from .texto import PDFProtegido, extraer_texto, imagenes_pdf
+from .texto import PDFProtegido, extraer_texto, imagenes_pdf, ocr_alternativo
 from .validacion import (
     comparar,
     verificar_fechas,
@@ -155,6 +155,12 @@ class Pipeline:
 
         # 3. Validación determinística
         hallazgos = verificar_grounding(factura, doc.texto)
+        if usar_vision and any(h.regla == "evidencia_inexistente" for h in hallazgos):
+            # Tercera lectura: el OCR principal no confirmó algún número de la visión.
+            # Se repite el OCR con otra configuración y se vuelve a exigir coincidencia EXACTA
+            # (aceptar "un dígito de diferencia" dejaría pasar 1.180.000 por 1.190.000).
+            hallazgos = verificar_grounding(factura, doc.texto + "\n" + ocr_alternativo(pdf))
+            base["texto"] = doc.texto
         hallazgos += verificar_reglas(factura, hoy=self.hoy)
         hallazgos += verificar_roles(factura, doc.texto)
         hallazgos += verificar_fechas(factura, doc.texto)
