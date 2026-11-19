@@ -103,7 +103,7 @@ Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que s�
 - Validación de líneas contra el subtotal
 - Subir `PROMPT_VERSION` y comparar contra v1 en la evaluación
 
-## v0.6 Visión ✅ (código) · ⏳ (medición)
+## v0.6 Visión ✅
 - ✅ `ExtractorVisionOpenAI` / `ExtractorVisionClaude`: el modelo recibe las páginas como imagen (máx. 3) con el mismo esquema estricto y el prompt + una adenda para imágenes
 - ✅ **La visión propone, el OCR confirma**: dos lecturas independientes; cada número del modelo debe existir con los mismos dígitos en el texto de Tesseract. Por defecto solo se usa en PDFs sin texto (`--vision-siempre` para comparar en nativos)
 - ✅ `scripts/escanear_set.py`: convierte el set real en «escaneado» (200 dpi, rotación, ruido, JPEG) o «foto» (perspectiva, iluminación desigual, desenfoque, JPEG fuerte), conservando el XML como etiqueta. Calidad del set «foto»: nitidez mínima 31, mediana 60; 5 de 52 con confianza OCR < 60 %
@@ -121,7 +121,8 @@ Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que s�
 
 - ✅ **Caso r13:** con la imagen muy degradada, la visión **inventó una factura completa y coherente** (FE-0000000001, NIT 900.123.456-7, 100.000 + 19.000 = 119.000). Ninguna regla aritmética o de forma la habría detenido; la detuvo la confirmación del OCR. *La coherencia interna no es evidencia.*
 - ✅ **Tercera lectura** cuando el OCR principal no confirma: Tesseract sobre gris sin binarizar con otros modos de segmentación, exigiendo de nuevo coincidencia **exacta** (se descartó aceptar «un dígito de diferencia»: es justo el error 1.190.000 → 1.180.000). Sobre las evidencias reales de la corrida: confirma **40 de 44** campos correctos (antes 5) y **0 de 6** valores de la factura inventada
-- ⏳ Re-medir la corrida de visión con `--reusar` (sin costo)
+- ✅ Medido con `--reusar` (corregido para replicar el camino de visión): **automatización 31 % → 58 %, revisiones innecesarias 24 → 10, 0 falsos aprobados**; r13 sigue bloqueada. Costo: la latencia sube de 16 s a 33 s por factura en las que necesitan la tercera lectura
+- ⏳ Optimizar: hacer OCR solo en la región de cada evidencia o usar el OCR en gris como lectura principal (en esta prueba leyó mejor que la binarización)
 
 ## v0.7 Persistencia y procesamiento asíncrono
 - PostgreSQL con índice único `(nit_emisor, numero)` para deduplicar

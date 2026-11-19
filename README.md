@@ -10,6 +10,7 @@ Lectura de facturas PDF (nativas o escaneadas) con IA y generación de cobros, d
 |---|---|---|
 | **ZIP con XML DIAN (v0.4)** | **100 %** | **0** |
 | Solo PDF · gpt-4.1-mini · prompt v3 | 56 % | 0 |
+| Foto de celular (simulada) · visión + OCR confirma (v0.6) | 58 % | 0 |
 
 | Factura electrónica (ZIP con XML DIAN): sin IA | Solo PDF: evidencia verificada en verde, error en rojo |
 |---|---|
@@ -60,6 +61,20 @@ python -m facturas.eval eval_privado --fuente xml
 ## Escaneos y fotos: visión + OCR (v0.6)
 
 Para PDFs sin texto (escaneados, fotos de celular), un modelo con visión lee la **imagen** y Tesseract hace una **lectura independiente**. El grounding exige que cada número que propone el modelo aparezca con los mismos dígitos en el texto del OCR: *la visión propone, el OCR confirma*. Si el OCR no logra leer un dígito, la factura va a revisión en vez de confiar en una sola lectura.
+
+Resultados sobre 52 facturas reales convertidas en «foto de celular» (perspectiva, sombra, desenfoque, JPEG fuerte), gpt-4.1-mini, prompt v3:
+
+| | LLM sobre texto OCR | Visión + OCR | **+ tercera lectura** |
+|---|---|---|---|
+| Facturas con todos los críticos correctos | 38 % | 77 % | 77 % |
+| Automatización | 27 % | 31 % | **58 %** |
+| Revisiones innecesarias | 7 | 24 | 10 |
+| **Falsos aprobados monetarios** | **0** | **0** | **0** |
+| Segundos por factura | 16 | 16 | 33 |
+
+- **El LLM sobre texto OCR copia los errores del OCR** (cédula sin el primer dígito, `222…220`): la comprobación de evidencia los «confirma» porque el error está en el texto mismo. Las reglas de forma de la identificación los detienen.
+- **La visión acierta el doble**, pero un solo OCR no alcanza a confirmar sus números. La **tercera lectura** (Tesseract sobre gris sin binarizar, otros modos de segmentación) los confirma, siempre con dígitos **exactos**.
+- **Caso r13:** con la imagen muy degradada, la visión **inventó una factura completa y coherente** (FE-0000000001, 100.000 + 19.000 = 119.000). La suma cuadra y el formato es válido; la detuvo que ninguno de esos números existe en el OCR. *La coherencia interna no es evidencia.*
 
 ```bash
 # set "escaneado" o "fotografiado" a partir de las facturas reales; el XML sigue siendo la etiqueta
