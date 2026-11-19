@@ -205,3 +205,9 @@ def test_tabla_con_numero_alucinado_sigue_bloqueando():
     f = factura(total=Campo(valor=Decimal("498800"), evidencia="TOTAL 498.800,00"))
     assert any(h.regla == "evidencia_inexistente" and h.campo == "total"
                for h in verificar_grounding(f, TEXTO_TABLA))
+
+
+def test_monto_redondeado_en_pdf_no_bloquea():
+    texto = "Subtotal $ 205.529"
+    f = factura(subtotal=Campo(valor=Decimal("205529.41"), evidencia="Subtotal $ 205.529"))
+    assert not [h for h in verificar_grounding(f, texto) if h.campo == "subtotal"]

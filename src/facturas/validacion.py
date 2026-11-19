@@ -70,8 +70,9 @@ def _valor_en_evidencia(valor, evidencia: str) -> bool:
     """El valor devuelto debe poder leerse dentro de su propia evidencia."""
     from .extractores import parse_monto
 
-    if isinstance(valor, Decimal):
-        return any(parse_monto(t) == valor for t in _NUMERO.findall(evidencia))
+    if isinstance(valor, Decimal):  # tolera centavos: el PDF suele mostrar el valor redondeado
+        return any((m := parse_monto(t)) is not None and abs(m - valor) <= TOLERANCIA
+                   for t in _NUMERO.findall(evidencia))
     if isinstance(valor, date):
         return _fecha_en_texto(valor, evidencia)
     if re.fullmatch(r"[\d.\s-]+", str(valor)):  # NIT/cédula: comparar solo dígitos

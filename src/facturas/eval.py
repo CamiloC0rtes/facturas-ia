@@ -68,6 +68,7 @@ class Fila:
     errores: list[str] = field(default_factory=list)
     hallazgos: list[str] = field(default_factory=list)
     extraccion: dict | None = None  # lo que devolvió el extractor (para --reusar)
+    evidencias: dict[str, str] = field(default_factory=dict)  # valor <- evidencia de campos frenados
 
     @property
     def criticos_ok(self) -> bool:
@@ -115,6 +116,10 @@ def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] |
         fila = Fila(caso.name, r.decision.value, round(seg, 2),
                     hallazgos=[f"{h.regla}:{h.campo or ''}" for h in r.hallazgos
                                if h.severidad.value == "error"],
+                    evidencias={h.campo: f"{getattr(r.factura, h.campo).valor} <- "
+                                         f"'{getattr(r.factura, h.campo).evidencia}'"
+                                for h in r.hallazgos if h.campo and r.factura
+                                and h.severidad.value == "error"},
                     extraccion=r.factura.model_dump(mode="json") if r.factura else None)
         for c in FacturaExtraida.CAMPOS:
             esp = getattr(etiqueta, c).valor
@@ -183,6 +188,8 @@ def main() -> None:
             print(f"        x {e}")
         if f.decision != "automatico":
             print(f"        > frenada por: {', '.join(f.hallazgos) or '-'}")
+            for campo, ev in f.evidencias.items():
+                print(f"          {campo}: {ev}")
 
     res = resumen(filas)
     if config_cache:

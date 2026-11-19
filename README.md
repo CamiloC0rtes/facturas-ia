@@ -47,19 +47,21 @@ Reporta exactitud por campo, tasa de automatización, latencia, **falsos aprobad
 
 ### Resultados (21 facturas electrónicas reales, 17 emisores)
 
-| | Reglas (sin IA) | gpt-4.1-mini · prompt v1 | + reglas de rol | **+ prompt v2** |
-|---|---|---|---|---|
-| Exactitud NIT cliente | 0 % | 24 % | 24 % | **95 %** |
-| Exactitud número / NIT emisor | 14 % / 52 % | 76 % / 86 % | 76 % / 86 % | **81 % / 90 %** |
-| Exactitud total | 10 % | 100 % | 100 % | **100 %** |
-| Facturas con todos los críticos bien | 0 % | 14 % | 19 % | **62 %** |
-| Automatización | 0 % | 19 % | 5 % | **29 %** |
-| **Falsos aprobados** | **0** | **4** ❌ | **0** | **0** |
-| Latencia promedio | <0,1 s | 2,4 s | 2,2 s | 2,5 s |
+| | Reglas (sin IA) | gpt-4.1-mini · prompt v1 | + reglas de rol | + prompt v2 | **+ grounding por dígitos** |
+|---|---|---|---|---|---|
+| Exactitud NIT cliente | 0 % | 24 % | 24 % | 95 % | **95 %** |
+| Exactitud número / NIT emisor | 14 % / 52 % | 76 % / 86 % | 76 % / 86 % | 81 % / 90 % | **81 % / 100 %** |
+| Exactitud total | 10 % | 100 % | 100 % | 100 % | **100 %** |
+| Facturas con todos los críticos bien | 0 % | 14 % | 19 % | 62 % | **71 %** |
+| Automatización | 0 % | 19 % | 5 % | 29 % | **62 %** |
+| Revisiones innecesarias | – | – | – | 9 | **2** |
+| **Falsos aprobados** | **0** | **4** ❌ | **0** | **0** | **0** |
+| Latencia promedio | <0,1 s | 2,4 s | 2,2 s | 2,5 s | 2,8 s |
 
 - **v1 → reglas de rol:** los 4 falsos aprobados eran valores reales en el campo equivocado (NIT del software de facturación, un celular). El grounding no los ve; las reglas de rol sí.
 - **v1 → v2:** definir cada campo en el prompt (qué *no* es el número de factura, que el cliente puede tener cédula sin DV) subió el NIT del cliente de 24 % a 95 %.
-- Siguiente brecha: 7 facturas tenían todo bien y aun así fueron a revisión. Ver [ROADMAP.md](ROADMAP.md#v03-evaluación-en-curso).
+- **v2 → grounding por dígitos:** 9 facturas correctas iban a revisión por **formato** (NIT con espacio, fecha `04.04.2026`, rótulo y valor unidos desde tablas, DV de cédula mal impreso). Exigir que cada número exista con los mismos dígitos —en vez de que todo el texto se parezca— las liberó sin abrir la puerta a alucinaciones (un total inventado sigue bloqueado).
+- El 38 % que va a revisión es mayormente **correcto**: número de resolución tomado como número de factura, subtotal e IVA intercambiados, campos vacíos.
 
 ## Modelo y prompt engineering
 
