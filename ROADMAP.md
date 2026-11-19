@@ -38,9 +38,23 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
 - ✅ Etiquetado automático con el **XML DIAN** que viene en el ZIP de cada factura electrónica (`dian_xml.py`): no hay que etiquetar a mano
 - ✅ Set privado inicial: 21 facturas reales de 17 emisores (retail, gimnasios, cine, Cámara de Comercio…), fuera del repo
 - ✅ Prompts versionados (`v1`, `v2`) para comparar
-- ⏳ Correr la comparación con OpenAI (`v1` vs `v2`, y varios modelos) y publicar la tabla de resultados aquí
+- ✅ Primera corrida con OpenAI (`gpt-4.1-mini`, prompt `v1`): **4 falsos aprobados** → reglas de rol
+- ⏳ Re-correr `v1` y `v2` con las reglas de rol y publicar la tabla comparativa
 
 **Línea base (extractor de reglas, sin IA, 21 facturas reales):** exactitud por campo entre 0 % y 57 %, 0 % de automatización y **0 falsos aprobados**. Las reglas no sirven para extraer de formatos reales, pero las validaciones cumplen su función: nada mal leído llega a cobro.
+
+**Primera corrida con LLM (gpt-4.1-mini, prompt v1, sin reglas de rol):**
+
+| Métrica | Resultado |
+|---|---|
+| Exactitud total / fecha de emisión | 100 % / 100 % |
+| Exactitud NIT emisor / NIT cliente | 86 % / 24 % |
+| Tasa de automatización | 19 % |
+| **Falsos aprobados** | **4 de 21** ❌ |
+
+Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que sí existen en la factura, pero en el campo equivocado. En 3 casos usó el NIT del software de facturación (Alegra) como emisor o como cliente; en 1, un número de celular impreso en la factura como NIT del cliente. El grounding no lo detecta porque el valor sí aparece en el documento.
+
+**Lección:** el grounding verifica *que el valor exista*, no *que esté en el rol correcto*. Se agregaron **reglas de rol** (`verificar_roles`): NIT de proveedores tecnológicos (lista + contexto "Software:", "Proveedor tecnológico"), celulares como NIT, NIT emisor igual al del cliente, y número de resolución DIAN como número de factura. Re-aplicadas sobre los 4 casos: los 4 se detectan; sobre las 21 etiquetas correctas: 0 falsas alarmas.
 
 **Lo que enseñaron las facturas reales** (y no habrían mostrado las sintéticas):
 | Hallazgo | Cambio |

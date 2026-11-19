@@ -136,6 +136,81 @@ def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallaz
     return h
 
 
+# --------------------------------------------------------------- reglas de rol
+# El grounding confirma que el valor EXISTE en el documento, no que esté en el campo
+# correcto. Estos errores aparecieron en la evaluación con facturas reales (v0.3):
+# el LLM tomó el NIT del software de facturación como emisor y un celular como cliente.
+
+# NITs de proveedores tecnológicos / software de facturación vistos en facturas reales.
+NITS_PROVEEDORES_TECNOLOGICOS = {
+    "900559088",  # Alegra
+    "900390126",  # The Factory HKA
+    "900306823",  # F&M Technology
+    "901223648",  # Dataico
+    "900984424",  # Esdinamico
+    "901380553",  # Ecosistemas Digitales
+    "900248304",  # Mahalo POS
+}
+_CONTEXTO_PROVEEDOR = re.compile(r"proveedor\s+tecnol|software|fabricad[oa]\s+por|generad[oa]\s+por", re.I)
+_CONTEXTO_TELEFONO = re.compile(r"tel[eé]?f?|cel(ular)?|m[oó]vil|whatsapp|contacto", re.I)
+_ETIQUETA_ID = re.compile(r"nit|c\.?\s?c\.?|c[eé]dula|documento|identificaci[oó]n", re.I)
+_CONTEXTO_RESOLUCION = re.compile(r"resoluci[oó]n|autorizaci[oó]n|rango|habilitaci[oó]n", re.I)
+
+
+def _base_nit(nit: str) -> str:
+    return re.sub(r"\D", "", nit.split("-")[0])
+
+
+def _contextos(texto: str, valor: str, ventana: int = 60) -> list[str]:
+    """Texto que precede a cada aparición del valor (con o sin puntos)."""
+    digitos = re.sub(r"\D", "", valor.split("-")[0])
+    if not digitos:
+        return []
+    patron = r"\.?".join(digitos)  # 900559088 también encuentra 900.559.088
+    plano = re.sub(r"\s+", " ", texto)
+    return [plano[max(0, m.start() - ventana):m.start()] for m in re.finditer(patron, plano)]
+
+
+def _rotulo_telefono(contexto: str) -> bool:
+    """¿El rótulo más cercano antes del valor es de teléfono? ("TELÉFONO: 744 7285 Nit:" -> no)."""
+    cola = contexto[-25:]
+    tel = list(_CONTEXTO_TELEFONO.finditer(cola))
+    return bool(tel) and not _ETIQUETA_ID.search(cola[tel[-1].end():])
+
+
+def verificar_roles(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
+    h: list[Hallazgo] = []
+
+    def err(regla: str, campo: str, msg: str) -> None:
+        h.append(Hallazgo(regla=regla, campo=campo, severidad=Severidad.ERROR, mensaje=msg))
+
+    for campo in ("nit_emisor", "nit_cliente"):
+        nit = getattr(f, campo).valor
+        if not nit:
+            continue
+        base = _base_nit(nit)
+        ctx = _contextos(texto, nit)
+        if base in NITS_PROVEEDORES_TECNOLOGICOS or (ctx and all(_CONTEXTO_PROVEEDOR.search(c[-40:]) for c in ctx)):
+            err("nit_proveedor_tecnologico", campo,
+                f"{campo} {nit} es el NIT del software/proveedor de facturación, no de la factura")
+        if len(base) == 10 and base.startswith("3"):
+            err("nit_es_celular", campo, f"{campo} {nit} parece un número de celular")
+        elif ctx and all(_rotulo_telefono(c) for c in ctx):
+            err("nit_es_telefono", campo, f"{campo} {nit} aparece como teléfono en el documento")
+
+    emi, cli = f.nit_emisor.valor, f.nit_cliente.valor
+    if emi and cli and _base_nit(emi) == _base_nit(cli):
+        err("emisor_igual_cliente", "nit_cliente", "el NIT del cliente es igual al del emisor")
+
+    num = f.numero.valor
+    if num:
+        solo_digitos = re.sub(r"\D", "", num)
+        ctx = _contextos(texto, num) if solo_digitos == num else []
+        if re.fullmatch(r"18\d{12}", solo_digitos) or (ctx and all(_CONTEXTO_RESOLUCION.search(c[-40:]) for c in ctx)):
+            err("numero_es_resolucion", "numero", f"{num} parece el número de resolución DIAN, no el de la factura")
+    return h
+
+
 def comparar(a: FacturaExtraida, b: FacturaExtraida) -> list[Hallazgo]:
     """Consenso: dos extracciones independientes deben coincidir en lo crítico."""
     h = []

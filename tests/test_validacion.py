@@ -120,3 +120,47 @@ def test_consenso_detecta_desacuerdo():
 ])
 def test_parse_monto_formatos_reales(texto, esperado):
     assert parse_monto(texto) == Decimal(esperado)
+
+
+# ------------------------------------------------- reglas de rol (casos reales v0.3)
+from facturas.validacion import verificar_roles  # noqa: E402
+
+TEXTO_REAL = """STARK GYM S.A.S. NIT 900965267-5
+Cliente: JUAN CORTES  C.C. 1000491862
+Pedido ACO9AA27665-1 3203653336
+Resolución de facturación No. 18764113926324 del 2026-01-01
+Factura de venta FEH119328
+Software: Alegra - NIT 900.559.088-2"""
+
+
+def roles(**cambios):
+    return {h.regla for h in verificar_roles(factura(**cambios), TEXTO_REAL)}
+
+
+def test_nit_del_software_como_emisor():
+    assert "nit_proveedor_tecnologico" in roles(nit_emisor=Campo(valor="900.559.088-2", evidencia="x"))
+
+
+def test_celular_como_nit_cliente():
+    assert "nit_es_celular" in roles(nit_cliente=Campo(valor="3203653336", evidencia="x"))
+
+
+def test_emisor_igual_cliente():
+    assert "emisor_igual_cliente" in roles(nit_emisor=Campo(valor="900965267-5", evidencia="x"),
+                                           nit_cliente=Campo(valor="900965267-5", evidencia="x"))
+
+
+def test_resolucion_como_numero():
+    assert "numero_es_resolucion" in roles(numero=Campo(valor="18764113926324", evidencia="x"))
+
+
+def test_roles_correctos_sin_errores():
+    assert roles(nit_emisor=Campo(valor="900965267-5", evidencia="x"),
+                 nit_cliente=Campo(valor="1000491862", evidencia="x"),
+                 numero=Campo(valor="FEH119328", evidencia="x")) == set()
+
+
+def test_telefono_antes_del_rotulo_nit_no_es_falsa_alarma():
+    texto = "COMODIN S.A.S TELÉFONO: 744 7285 Nit: 800069933-6"
+    f = factura(nit_emisor=Campo(valor="800069933-6", evidencia="x"))
+    assert not [h for h in verificar_roles(f, texto) if h.campo == "nit_emisor"]
