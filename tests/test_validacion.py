@@ -274,3 +274,21 @@ def test_encabezados_de_tabla_mezclados_son_ambiguos():
     ev = "CANT. DESCRIPCIÓN DESCUENTOS UNID. PRECIO VTA. TOTAL PORCENTAJE IMPUESTO ITEM 95.782,00"
     f = factura(descuentos=Campo(valor=Decimal("95782"), evidencia=ev))
     assert [h.regla for h in verificar_rotulos(f)] == ["rotulo_ambiguo"]
+
+
+# ------------------------------------- errores de OCR copiados por el LLM (set "foto", v0.6)
+def test_identificaciones_con_forma_imposible():
+    for malo in ("000491862", "222.222.222.220", "31000491862"):
+        f = factura(nit_cliente=Campo(valor=malo, evidencia="x"))
+        assert any(h.regla == "identificacion_invalida" for h in verificar_roles(f, "")), malo
+    for bueno in ("1000491862", "222222222222", "52361705"):
+        f = factura(nit_cliente=Campo(valor=bueno, evidencia="x"))
+        assert not any(h.regla == "identificacion_invalida" for h in verificar_roles(f, "")), bueno
+
+
+def test_dv_leido_como_punto():
+    from facturas.extractores import normalizar_nit
+
+    assert normalizar_nit("900342297.2") == "900342297-2"
+    assert normalizar_nit("900.342.297.2") == "900.342.297-2"
+    assert normalizar_nit("222.222.222.220") == "222.222.222.220"  # miles, no DV

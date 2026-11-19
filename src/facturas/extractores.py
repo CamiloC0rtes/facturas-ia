@@ -348,6 +348,11 @@ def normalizar_nit(v: str | None) -> str | None:
         return v
     v = v.strip()
     m = re.fullmatch(r"([\d.]{5,15})\s*[-\s]\s*(\d)", v)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}"
+    # OCR que leyó el guion del DV como punto: '900342297.2' -> '900342297-2'
+    # (un grupo final de UN dígito no puede ser separador de miles)
+    m = re.fullmatch(r"(\d{1,3}(?:\.?\d{3}){2,3})\.(\d)", v)
     return f"{m.group(1)}-{m.group(2)}" if m else v
 
 

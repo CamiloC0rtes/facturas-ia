@@ -195,6 +195,9 @@ _ETIQUETA_ID = re.compile(r"nit|c\.?\s?c\.?|c[eé]dula|documento|identificaci[o�
 _CONTEXTO_RESOLUCION = re.compile(r"resoluci[oó]n|autorizaci[oó]n|rango|habilitaci[oó]n", re.I)
 
 
+CONSUMIDOR_FINAL = "222222222222"
+
+
 def _base_nit(nit: str) -> str:
     return re.sub(r"\D", "", nit.split("-")[0])
 
@@ -235,6 +238,22 @@ def verificar_roles(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
             err("nit_es_celular", campo, f"{campo} {nit} parece un número de celular")
         elif ctx and all(_rotulo_telefono(c) for c in ctx):
             err("nit_es_telefono", campo, f"{campo} {nit} aparece como teléfono en el documento")
+
+    # Forma de la identificación (errores de OCR copiados por el LLM en el set "foto"):
+    # NIT y cédula tienen 5-10 dígitos y no empiezan por 0; la única de 12 es el
+    # "consumidor final" genérico de la DIAN (222222222222).
+    for campo in ("nit_emisor", "nit_cliente"):
+        nit = getattr(f, campo).valor
+        if not nit:
+            continue
+        base = _base_nit(nit)
+        if base == CONSUMIDOR_FINAL:
+            if campo == "nit_emisor":
+                err("identificacion_invalida", campo, "el emisor no puede ser el consumidor final genérico")
+        elif base.startswith("0") or not 5 <= len(base) <= 10:
+            err("identificacion_invalida", campo,
+                f"{campo} {nit}: {len(base)} dígitos{', empieza por 0' if base.startswith('0') else ''} "
+                "(posible error de lectura)")
 
     emi, cli = f.nit_emisor.valor, f.nit_cliente.valor
     if emi and cli and _base_nit(emi) == _base_nit(cli):

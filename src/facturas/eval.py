@@ -43,7 +43,9 @@ def _norm_id(v) -> str:
 
 def _norm_nit(v) -> str:
     """Compara solo la base del NIT/cédula (sin puntos ni DV)."""
-    return re.sub(r"\D", "", str(v).split("-")[0])
+    from .extractores import normalizar_nit
+
+    return re.sub(r"\D", "", normalizar_nit(str(v)).split("-")[0])
 
 
 def igual(campo: str, esperado, obtenido) -> bool:

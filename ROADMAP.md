@@ -107,7 +107,10 @@ Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que s�
 - ✅ `ExtractorVisionOpenAI` / `ExtractorVisionClaude`: el modelo recibe las páginas como imagen (máx. 3) con el mismo esquema estricto y el prompt + una adenda para imágenes
 - ✅ **La visión propone, el OCR confirma**: dos lecturas independientes; cada número del modelo debe existir con los mismos dígitos en el texto de Tesseract. Por defecto solo se usa en PDFs sin texto (`--vision-siempre` para comparar en nativos)
 - ✅ `scripts/escanear_set.py`: convierte el set real en «escaneado» (200 dpi, rotación, ruido, JPEG) o «foto» (perspectiva, iluminación desigual, desenfoque, JPEG fuerte), conservando el XML como etiqueta. Calidad del set «foto»: nitidez mínima 31, mediana 60; 5 de 52 con confianza OCR < 60 %
-- ⏳ Medir sobre «foto»: LLM sobre texto OCR vs visión + OCR
+- ✅ Medido el LLM sobre el **texto del OCR** en el set «foto» (gpt-4.1-mini, v3): 31 % de automatización, **4 falsos aprobados** (3 de identificación, 1 de número). Todos eran **errores del OCR copiados por el LLM** —y el grounding los confirma porque el error está en el propio texto—: cédula sin el primer dígito (`000491862`), consumidor final `222…220`, DV leído como punto (`900342297.2`), `MCO` por `MC`
+- ✅ Reglas de forma de la identificación (5–10 dígitos, no empieza por 0, 12 dígitos solo si es el consumidor final genérico) y normalización del DV leído como punto. 0 falsas alarmas sobre las 54 etiquetas
+- ✅ OCR en una sola pasada (antes se corría Tesseract dos veces por página)
+- ⏳ Medir visión + OCR sobre el mismo set y re-validar ambas corridas con `--reusar`
 
 ## v0.7 Persistencia y procesamiento asíncrono
 - PostgreSQL con índice único `(nit_emisor, numero)` para deduplicar

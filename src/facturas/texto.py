@@ -65,6 +65,16 @@ class PDFProtegido(Exception):
     """El PDF pide contraseña (p. ej. facturas de telecomunicaciones con la cédula)."""
 
 
+def _texto_de_datos(datos: dict) -> str:
+    """Reconstruye el texto por líneas a partir de image_to_data (evita un segundo OCR)."""
+    lineas: dict[tuple, list[str]] = {}
+    for i, palabra in enumerate(datos["text"]):
+        if palabra.strip():
+            clave = (datos["block_num"][i], datos["par_num"][i], datos["line_num"][i])
+            lineas.setdefault(clave, []).append(palabra)
+    return "\n".join(" ".join(p) for _, p in sorted(lineas.items()))
+
+
 def extraer_texto(pdf_bytes: bytes, lang: str = "spa", password: str | None = None) -> TextoDocumento:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     if doc.needs_pass and not doc.authenticate(password or ""):
@@ -79,11 +89,12 @@ def extraer_texto(pdf_bytes: bytes, lang: str = "spa", password: str | None = No
         gris = _pagina_a_gris(pagina)
         calidades.append(nitidez(gris))
         img = preprocesar(gris)
+        # una sola pasada de Tesseract: texto y confianza salen del mismo resultado
         datos = pytesseract.image_to_data(
             img, lang=lang, config="--psm 6", output_type=pytesseract.Output.DICT
         )
         confs += [float(c) for c in datos["conf"] if float(c) >= 0]
-        textos.append(pytesseract.image_to_string(img, lang=lang, config="--psm 6"))
+        textos.append(_texto_de_datos(datos))
 
     return TextoDocumento(
         texto="\n".join(textos),
