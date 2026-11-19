@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import time
 from collections import Counter
@@ -172,6 +173,10 @@ def main() -> None:
             return Pipeline(extractor=llm, segundo=ExtractorReglas() if args.consenso else None, hoy=hoy)
         return Pipeline(hoy=hoy)
 
+    clave = {"openai": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(args.llm)
+    if clave and not args.reusar and not os.getenv(clave):
+        raise SystemExit(f"Falta {clave}. En esta terminal: export {clave}=...  "
+                         "(o guárdala como secreto de Codespaces para no repetirlo).")
     if not args.carpeta.is_dir():
         raise SystemExit(f"No existe la carpeta '{args.carpeta}'. Descomprime ahí las facturas "
                          "(una subcarpeta por factura con su .pdf y su .xml).")
