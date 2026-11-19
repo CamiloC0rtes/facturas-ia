@@ -247,6 +247,90 @@ def verificar_roles(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
     return h
 
 
+# ---------------------------------------------------- fechas ambiguas (d/m vs m/d)
+_FECHA_SLASH = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b(\s+\d{1,2}:\d{2}(:\d{2})?\s*([AaPp]\.?\s?[Mm]\.?))?")
+
+
+def _formato_fechas(texto: str) -> str | None:
+    """Deduce si el documento usa d/m/a o m/d/a.
+
+    Pistas: una fecha no ambigua (25/11 -> d/m; 11/25 -> m/d), o el formato de hora:
+    'PM' en mayúsculas sin puntos es el formato en inglés de EE. UU. ('5/10/2026 4:47:53 PM'),
+    mientras que 'p. m.' es el formato en español ('04/05/2022 07:28:37p. m.').
+    """
+    dm = md = 0
+    for m in _FECHA_SLASH.finditer(texto):
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > 12 >= b:
+            dm += 1
+        elif b > 12 >= a:
+            md += 1
+        elif m.group(6):
+            if re.fullmatch(r"[AP]M", m.group(6)):
+                md += 1
+            elif "." in m.group(6):
+                dm += 1
+    if dm and not md:
+        return "dm"
+    if md and not dm:
+        return "md"
+    return None
+
+
+def verificar_fechas(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
+    """3/11/2026 puede ser 3 de noviembre o 11 de marzo. Visto en facturas reales (Puma):
+    el LLM leyó '5/10/2026 4:47:53 PM' como 5 de octubre y era 10 de mayo."""
+    h: list[Hallazgo] = []
+    formato = _formato_fechas(texto)
+    for campo in ("fecha_emision", "fecha_vencimiento"):
+        c = getattr(f, campo)
+        if c.valor is None or not c.evidencia:
+            continue
+        for m in _FECHA_SLASH.finditer(c.evidencia):
+            a, b, anio = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if a > 12 or b > 12 or a == b or anio != c.valor.year:
+                continue
+            if formato is None:
+                # sin pistas: convención colombiana (día/mes), pero se avisa
+                h.append(Hallazgo(regla="fecha_ambigua", campo=campo, severidad=Severidad.ADVERTENCIA,
+                                  mensaje=f"{m.group(0)} es ambigua; se asume día/mes"))
+            esperado = (b, a) if formato == "md" else (a, b)
+            if (c.valor.day, c.valor.month) != esperado:
+                h.append(Hallazgo(regla="fecha_mal_interpretada", campo=campo, severidad=Severidad.ERROR,
+                                  mensaje=f"el documento usa formato {'mes/día' if formato == 'md' else 'día/mes'}: "
+                                          f"{m.group(0)} no es {c.valor}"))
+            break
+    return h
+
+
+# ------------------------------------------------ rótulo coherente con el campo
+# Visto en facturas reales (Falabella): el LLM puso el IVA como "descuento" para que la
+# suma cuadrara. Los campos que entran en la suma deben venir de un rótulo de su tipo.
+_ROTULOS = {
+    "descuentos": re.compile(r"desc", re.I),
+    "otros_impuestos": re.compile(r"consumo|inc\b|bolsa|impuesto|imp\.", re.I),
+    "cargos": re.compile(r"propina|servicio|cargo|flete|domicilio", re.I),
+    "iva": re.compile(r"iva|impuesto|imp\.", re.I),
+}
+_ROTULO_IVA = re.compile(r"\biva\b|impuesto a las ventas", re.I)
+
+
+def verificar_rotulos(f: FacturaExtraida) -> list[Hallazgo]:
+    h: list[Hallazgo] = []
+    for campo, patron in _ROTULOS.items():
+        c = getattr(f, campo)
+        if not c.valor or not c.evidencia:  # None o 0
+            continue
+        if not patron.search(c.evidencia):
+            h.append(Hallazgo(regla="rotulo_incoherente", campo=campo, severidad=Severidad.ERROR,
+                              mensaje=f"{campo} {c.valor} viene de '{c.evidencia[:40]}', sin rótulo de {campo}"))
+        elif campo != "iva" and _ROTULO_IVA.search(c.evidencia) and not patron.search(
+                _ROTULO_IVA.sub("", c.evidencia)):
+            h.append(Hallazgo(regla="rotulo_incoherente", campo=campo, severidad=Severidad.ERROR,
+                              mensaje=f"{campo} {c.valor} parece ser el IVA ('{c.evidencia[:40]}')"))
+    return h
+
+
 def comparar(a: FacturaExtraida, b: FacturaExtraida) -> list[Hallazgo]:
     """Consenso: dos extracciones independientes deben coincidir en lo crítico."""
     h = []

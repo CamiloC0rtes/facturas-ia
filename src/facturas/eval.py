@@ -36,7 +36,9 @@ TOL = Decimal("1")
 
 
 def _norm_id(v) -> str:
-    return re.sub(r"[^0-9A-Z]", "", str(v).upper())
+    """'005F-00145869' == '005F145869': ignora separadores y ceros de relleno por grupo."""
+    grupos = re.findall(r"[A-Z]+|\d+", str(v).upper())
+    return "".join(g.lstrip("0") or "0" if g.isdigit() else g for g in grupos)
 
 
 def _norm_nit(v) -> str:
@@ -134,6 +136,12 @@ def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] |
             esp = getattr(etiqueta, c).valor
             obt = getattr(r.factura, c).valor if r.factura else None
             ok = igual(c, esp, obt)
+            if c == "subtotal" and not ok and r.factura and esp is not None and obt is not None:
+                # El XML trae el subtotal neto de descuentos de línea; el PDF puede mostrar
+                # bruto + descuento. Si la base neta coincide, el cobro es el mismo.
+                neto_obt = obt - (r.factura.descuentos.valor or 0)
+                neto_esp = esp - (etiqueta.descuentos.valor or 0)
+                ok = abs(neto_obt - neto_esp) <= TOL
             fila.correctos[c] = ok
             if not ok:
                 fila.errores.append(f"{c}: esperado={esp} obtenido={obt}")
@@ -145,6 +153,8 @@ def resumen(filas: list[Fila]) -> dict:
     n = len(filas)
     auto = [f for f in filas if f.decision == Decision.AUTOMATICO.value]
     falsos = [f.caso for f in auto if not f.criticos_ok]
+    monetarios = [f.caso for f in auto if not all(
+        f.correctos[c] for c in ("total", "nit_emisor", "nit_cliente"))]
     # revisión innecesaria: todo lo crítico estaba bien, pero una regla la frenó
     innecesarias = [f for f in filas if f.criticos_ok and f.decision != Decision.AUTOMATICO.value]
     por_campo = {c: round(sum(f.correctos[c] for f in filas) / n, 3) for c in FacturaExtraida.CAMPOS}
@@ -155,6 +165,8 @@ def resumen(filas: list[Fila]) -> dict:
         "tasa_automatizacion": round(len(auto) / n, 3),
         "falsos_aprobados": len(falsos),
         "falsos_aprobados_casos": falsos,
+        "falsos_aprobados_monetarios": len(monetarios),  # total o NIT mal: se cobra mal o a quien no es
+        "falsos_aprobados_monetarios_casos": monetarios,
         "revisiones_innecesarias": len(innecesarias),
         "reglas_que_frenan_revisiones_innecesarias": dict(
             Counter(h for f in innecesarias for h in f.hallazgos).most_common()),

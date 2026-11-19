@@ -48,7 +48,15 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
 - ✅ Set ampliado a **54 facturas de 33 emisores** (Falabella, Puma, Disney, Claro, ETB, Siigo, Forus, Smart Fit…). Las reglas de rol siguen con 0 falsas alarmas sobre los 33 emisores nuevos: no estaban sobreajustadas a los primeros 21
 - ✅ Lo que trajo el set ampliado: PDF con clave (Claro) → rechazo con motivo en vez de caída; totales con **descuentos globales, impuesto al consumo, impuesto a bolsas y propina** → campos `descuentos`, `otros_impuestos`, `cargos` y regla total = subtotal + IVA + otros + cargos − descuentos; redondeo del total (ETB, $2,63) → tolerancia de $100 en la suma. Sobre las 54 etiquetas correctas: 0 falsas alarmas
 - ✅ Prompt `v3`: número con prefijo y nunca el de resolución, subtotal antes de IVA y descuentos, y los campos nuevos
-- ⏳ Medir `v2` vs `v3` sobre las 54 facturas
+- ✅ Primera medición sobre 54 facturas: **`v2` 10 falsos aprobados, `v3` 8**. Separándolos:
+  - artefactos de la evaluación: `005F-00145869` vs `005F145869` (ceros de relleno) y subtotal bruto + descuento vs subtotal neto del XML (el total era correcto) → la evaluación ahora compara número sin ceros de relleno y la base neta
+  - **fechas en formato EE. UU.** (Puma: `5/10/2026 4:47:53 PM` leído como 5 de octubre) → regla `verificar_fechas`: deduce d/m vs m/d por fechas no ambiguas y por el formato de hora (`PM` en inglés vs `p. m.` en español). Sobre las 7 fechas ambiguas reales: 0 falsas alarmas y todas las inversiones detectadas
+  - **IVA disfrazado de descuento** (Falabella, `v2`): el PDF de Falabella rotula como «TOTAL A PAGAR» el valor *sin* IVA (el XML dice otra cosa); el LLM puso el IVA como descuento para cuadrar la suma → regla `verificar_rotulos`: descuentos, otros impuestos, cargos e IVA deben venir de un rótulo de su tipo
+  - **número de factura rotulado como «Número de Caja»** (Adidas): el LLM tomó otro código. Sin solución determinística desde el PDF → v0.4 (XML y asunto del correo, que por norma DIAN trae NIT;emisor;número)
+- ✅ La evaluación separa **falsos aprobados monetarios** (total o NIT mal: se cobra mal o a quien no es) de los de referencia (número o fecha)
+- ⏳ Re-medir `v2` y `v3` con `--reusar` (sin costo)
+
+**Lección de esta ronda:** el PDF no siempre dice lo mismo que el XML legal (Falabella). Para facturas electrónicas, el XML debe ser la fuente de verdad; el LLM sobre el PDF es el plan B para documentos sin XML.
 - ⏳ Próximo prompt `v3`: prefijo del número de factura (`TDCR28625`, no `28625`) y subtotal antes de IVA en facturas con precios IVA incluido
 
 **Línea base (extractor de reglas, sin IA, 21 facturas reales):** exactitud por campo entre 0 % y 57 %, 0 % de automatización y **0 falsos aprobados**. Las reglas no sirven para extraer de formatos reales, pero las validaciones cumplen su función: nada mal leído llega a cobro.

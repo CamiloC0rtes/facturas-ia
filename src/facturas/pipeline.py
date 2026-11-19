@@ -8,7 +8,14 @@ from pathlib import Path
 from .extractores import Extractor, ExtractorReglas
 from .models import Cobro, Decision, FacturaExtraida, Hallazgo, Resultado, Severidad
 from .texto import PDFProtegido, extraer_texto
-from .validacion import comparar, verificar_grounding, verificar_reglas, verificar_roles
+from .validacion import (
+    comparar,
+    verificar_fechas,
+    verificar_grounding,
+    verificar_reglas,
+    verificar_roles,
+    verificar_rotulos,
+)
 
 UMBRAL_NITIDEZ = 30.0  # por debajo: pedir reenvío. Calibrar con facturas reales.
 UMBRAL_CONF_OCR = 60.0  # por debajo: siempre a revisión
@@ -59,6 +66,8 @@ class Pipeline:
         hallazgos = verificar_grounding(factura, doc.texto)
         hallazgos += verificar_reglas(factura, hoy=self.hoy)
         hallazgos += verificar_roles(factura, doc.texto)
+        hallazgos += verificar_fechas(factura, doc.texto)
+        hallazgos += verificar_rotulos(factura)
         if self.segundo:
             hallazgos += comparar(factura, self.segundo.extraer(doc.texto))
         if doc.metodo == "ocr" and (doc.confianza_ocr or 0) < UMBRAL_CONF_OCR:

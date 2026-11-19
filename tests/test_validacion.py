@@ -231,3 +231,40 @@ def test_total_con_descuento_inc_y_propina():
     sin = factura(iva=Campo(), subtotal=Campo(valor=Decimal("64759"), evidencia="x"),
                   total=Campo(valor=Decimal("24053"), evidencia="x"))
     assert any(h.regla == "suma_total" for h in verificar_reglas(sin, hoy=HOY))
+
+
+# ------------------------------------------ fechas ambiguas y rótulos (casos reales, 54 facturas)
+from facturas.validacion import verificar_fechas, verificar_rotulos  # noqa: E402
+
+TEXTO_PUMA = ("Fecha de Emisión 5/10/2026 4:47:53 PM Fecha de Validación 5/10/2026 4:47:54 PM "
+              "Fecha de Vencimiento 1/1/0001 12:00:00 AM")
+
+
+def test_fecha_formato_estadounidense_mal_leida():
+    mal = factura(fecha_emision=Campo(valor=date(2026, 10, 5), evidencia="Fecha de Emisión 5/10/2026 4:47:53 PM"))
+    bien = factura(fecha_emision=Campo(valor=date(2026, 5, 10), evidencia="Fecha de Emisión 5/10/2026 4:47:53 PM"))
+    assert [h.regla for h in verificar_fechas(mal, TEXTO_PUMA)] == ["fecha_mal_interpretada"]
+    assert verificar_fechas(bien, TEXTO_PUMA) == []
+
+
+def test_fecha_ambigua_asume_dia_mes():
+    f = factura(fecha_emision=Campo(valor=date(2026, 11, 3), evidencia="Fecha: 03/11/2026"))
+    h = verificar_fechas(f, "Fecha: 03/11/2026")
+    assert [(x.regla, x.severidad.value) for x in h] == [("fecha_ambigua", "advertencia")]
+    texto_dm = "Fecha: 03/11/2026  Vence: 25/11/2026"  # 25/11 prueba que es día/mes
+    assert verificar_fechas(f, texto_dm) == []
+    mal = factura(fecha_emision=Campo(valor=date(2026, 3, 11), evidencia="Fecha: 03/11/2026"))
+    assert [x.regla for x in verificar_fechas(mal, texto_dm)] == ["fecha_mal_interpretada"]
+
+
+def test_p_m_en_espanol_es_dia_mes():
+    texto = "Fecha: 04/05/2022  07:28:37p. m."
+    f = factura(fecha_emision=Campo(valor=date(2022, 5, 4), evidencia="04/05/2022  07:28:37p. m."))
+    assert [x for x in verificar_fechas(f, texto) if x.severidad.value == "error"] == []
+
+
+def test_iva_disfrazado_de_descuento():
+    f = factura(descuentos=Campo(valor=Decimal("54380"), evidencia="IVA $ 54.380,00"))
+    assert [h.regla for h in verificar_rotulos(f)] == ["rotulo_incoherente"]
+    ok = factura(descuentos=Campo(valor=Decimal("20994"), evidencia="Descuento 20.994,00"))
+    assert verificar_rotulos(ok) == []
