@@ -266,6 +266,70 @@ SCHEMA_ESTRICTO = {
 }
 
 
+# ------------------------------------------------------------ extractores con visión (v0.6)
+ADENDA_VISION = """
+
+Recibirás IMÁGENES de la factura (escaneo o foto), no texto. En `evidencia` copia el texto
+exactamente como se ve impreso en la imagen, con los mismos dígitos y separadores. Si un valor
+está borroso, cortado o tapado, devuelve null: no lo reconstruyas."""
+
+
+def _b64(png: bytes) -> str:
+    import base64
+
+    return base64.b64encode(png).decode()
+
+
+class ExtractorVisionOpenAI(ExtractorOpenAI):
+    nombre = "openai_vision"
+
+    def extraer_imagenes(self, imagenes: list[bytes]) -> FacturaExtraida:
+        contenido = [{"type": "text", "text": "Extrae los datos de esta factura."}]
+        contenido += [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_b64(im)}",
+                                                          "detail": "high"}} for im in imagenes]
+        resp = self.client.chat.completions.create(
+            model=self.modelo,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": PROMPTS[self.prompt_version] + ADENDA_VISION},
+                {"role": "user", "content": contenido},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "factura", "strict": True, "schema": SCHEMA_ESTRICTO},
+            },
+        )
+        return a_modelo(json.loads(resp.choices[0].message.content))
+
+
+class ExtractorVisionClaude(ExtractorClaude):
+    nombre = "claude_vision"
+
+    def extraer_imagenes(self, imagenes: list[bytes]) -> FacturaExtraida:
+        contenido = [{"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                                  "data": _b64(im)}} for im in imagenes]
+        contenido.append({"type": "text", "text": "Extrae los datos de esta factura."})
+        resp = self.client.messages.create(
+            model=self.modelo,
+            max_tokens=1500,
+            temperature=0,
+            system=PROMPTS[self.prompt_version] + ADENDA_VISION,
+            tools=[TOOL],
+            tool_choice={"type": "tool", "name": TOOL["name"]},
+            messages=[{"role": "user", "content": contenido}],
+        )
+        bloque = next(b for b in resp.content if b.type == "tool_use")
+        return a_modelo(bloque.input)
+
+
+def extractor_vision(proveedor: str | None, modelo: str | None = None, prompt_version: str | None = None):
+    if proveedor == "openai":
+        return ExtractorVisionOpenAI(modelo=modelo, prompt_version=prompt_version)
+    if proveedor == "claude":
+        return ExtractorVisionClaude(modelo=modelo, prompt_version=prompt_version)
+    return None
+
+
 def extractor_llm(proveedor: str | None = None, modelo: str | None = None,
                   prompt_version: str | None = None):
     """Elige el LLM según el argumento o las API keys disponibles."""

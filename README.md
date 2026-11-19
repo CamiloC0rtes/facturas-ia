@@ -11,6 +11,10 @@ Lectura de facturas PDF (nativas o escaneadas) con IA y generación de cobros, d
 | **ZIP con XML DIAN (v0.4)** | **100 %** | **0** |
 | Solo PDF · gpt-4.1-mini · prompt v3 | 56 % | 0 |
 
+| Factura electrónica (ZIP con XML DIAN): sin IA | Solo PDF: evidencia verificada en verde, error en rojo |
+|---|---|
+| ![XML DIAN](docs/img/xml_dian.png) | ![Revisión](docs/img/revision.png) |
+
 ```
 $ python -m facturas.cli samples/*.pdf
 
@@ -51,6 +55,17 @@ Cada factura electrónica colombiana llega en un ZIP con el PDF (representación
 ```bash
 python -m facturas.cli correo/*.zip            # ZIP tal como llega
 python -m facturas.eval eval_privado --fuente xml
+```
+
+## Escaneos y fotos: visión + OCR (v0.6)
+
+Para PDFs sin texto (escaneados, fotos de celular), un modelo con visión lee la **imagen** y Tesseract hace una **lectura independiente**. El grounding exige que cada número que propone el modelo aparezca con los mismos dígitos en el texto del OCR: *la visión propone, el OCR confirma*. Si el OCR no logra leer un dígito, la factura va a revisión en vez de confiar en una sola lectura.
+
+```bash
+# set "escaneado" o "fotografiado" a partir de las facturas reales; el XML sigue siendo la etiqueta
+python scripts/escanear_set.py eval_privado eval_foto --nivel foto
+python -m facturas.eval eval_foto --llm openai --prompt v3                  # LLM sobre el texto del OCR
+python -m facturas.eval eval_foto --llm openai --prompt v3 --vision openai  # visión + OCR confirma
 ```
 
 ## Evaluación con facturas reales

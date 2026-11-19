@@ -4,11 +4,15 @@
 2. factura_escaneada.pdf    -> imagen con ruido y leve rotación (OCR)
 3. factura_borrosa.pdf      -> imagen muy borrosa (debe rechazarse)
 4. factura_inconsistente.pdf-> total mal sumado (debe ir a revisión)
+5. factura_electronica_demo.zip -> PDF + XML DIAN ficticio (camino v0.4, sin IA)
 """
 from __future__ import annotations
 
+import hashlib
 import io
+import zipfile
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 import cv2
 import pymupdf as fitz
@@ -34,7 +38,12 @@ def _fmt(n: float) -> str:
     return f"{n:,.0f}".replace(",", ".")
 
 
-def factura_pdf(total_override: float | None = None, **cambios) -> bytes:
+def cufe_demo(numero: str) -> str:
+    """CUFE ficticio con el mismo formato que el real (SHA-384 en hex, 96 caracteres)."""
+    return hashlib.sha384(f"demo-{numero}".encode()).hexdigest()
+
+
+def factura_pdf(total_override: float | None = None, cufe: str | None = None, **cambios) -> bytes:
     d = {**BASE, **cambios}
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
@@ -67,8 +76,61 @@ def factura_pdf(total_override: float | None = None, **cambios) -> bytes:
                   f"Total a pagar: $ {_fmt(total)}"):
         c.drawString(330, y, linea); y -= 18
     c.setFont("Helvetica", 8)
+    if cufe:  # como en las facturas reales, el CUFE va partido en dos líneas
+        c.drawString(60, 90, f"CUFE: {cufe[:60]}")
+        c.drawString(60, 80, cufe[60:])
     c.drawString(60, 60, "Documento ficticio generado para pruebas.")
     c.save()
+    return buf.getvalue()
+
+
+def factura_xml(numero: str = "FE-1024", cufe: str | None = None) -> bytes:
+    """AttachedDocument DIAN ficticio (misma estructura que los reales) con respuesta 02."""
+    d = BASE
+    subtotal = sum(c * v for _, c, v in d["lineas"])
+    iva = round(subtotal * 0.19)
+    nit_e, dv_e = d["nit_emisor"].replace(".", "").split("-")
+    nit_c, dv_c = d["nit_cliente"].replace(".", "").split("-")
+    invoice = f"""<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+ xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+ xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+ <cbc:ID>{numero.replace("-", "")}</cbc:ID><cbc:UUID schemeName="CUFE-SHA384">{cufe or cufe_demo(numero)}</cbc:UUID>
+ <cbc:IssueDate>{d["emision"]}</cbc:IssueDate><cbc:DueDate>{d["vencimiento"]}</cbc:DueDate>
+ <cac:AccountingSupplierParty><cac:Party><cac:PartyTaxScheme>
+  <cbc:CompanyID schemeID="{dv_e}" schemeName="31">{nit_e}</cbc:CompanyID></cac:PartyTaxScheme></cac:Party>
+ </cac:AccountingSupplierParty>
+ <cac:AccountingCustomerParty><cac:Party><cac:PartyTaxScheme>
+  <cbc:CompanyID schemeID="{dv_c}" schemeName="31">{nit_c}</cbc:CompanyID></cac:PartyTaxScheme></cac:Party>
+ </cac:AccountingCustomerParty>
+ <cac:TaxTotal><cbc:TaxAmount currencyID="COP">{iva}.00</cbc:TaxAmount><cac:TaxSubtotal>
+  <cac:TaxCategory><cac:TaxScheme><cbc:ID>01</cbc:ID></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal></cac:TaxTotal>
+ <cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="COP">{subtotal}.00</cbc:LineExtensionAmount>
+  <cbc:PayableAmount currencyID="COP">{subtotal + iva}.00</cbc:PayableAmount></cac:LegalMonetaryTotal>
+</Invoice>"""
+    respuesta = """<ApplicationResponse xmlns="urn:oasis:names:specification:ubl:schema:xsd:ApplicationResponse-2"
+ xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+ xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+ <cac:DocumentResponse><cac:Response><cbc:ResponseCode>02</cbc:ResponseCode>
+ <cbc:Description>Documento validado por la DIAN (ficticio)</cbc:Description></cac:Response></cac:DocumentResponse>
+</ApplicationResponse>"""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<AttachedDocument xmlns="urn:oasis:names:specification:ubl:schema:xsd:AttachedDocument-2"
+ xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+ xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+ <cac:Attachment><cac:ExternalReference><cbc:Description>{escape(invoice)}</cbc:Description>
+ </cac:ExternalReference></cac:Attachment>
+ <cac:ParentDocumentLineReference><cac:DocumentReference><cac:Attachment><cac:ExternalReference>
+ <cbc:Description>{escape(respuesta)}</cbc:Description></cac:ExternalReference></cac:Attachment>
+ </cac:DocumentReference></cac:ParentDocumentLineReference>
+</AttachedDocument>""".encode()
+
+
+def factura_zip(numero: str = "FE-1024") -> bytes:
+    cufe = cufe_demo(numero)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"fv{numero}.pdf", factura_pdf(numero=numero, cufe=cufe))
+        z.writestr(f"ad{numero}.xml", factura_xml(numero, cufe))
     return buf.getvalue()
 
 
@@ -99,6 +161,7 @@ def main() -> None:
         "factura_escaneada.pdf": escanear(limpia),
         "factura_borrosa.pdf": escanear(limpia, blur=21, ruido=3),
         "factura_inconsistente.pdf": factura_pdf(total_override=1_350_000, numero="FE-1025"),
+        "factura_electronica_demo.zip": factura_zip("FE-1026"),
     }
     for nombre, data in archivos.items():
         (OUT / nombre).write_bytes(data)

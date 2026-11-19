@@ -9,5 +9,7 @@ build/
 
 # facturas reales (datos personales): nunca al repo
 eval_privado/
+eval_*/
 *.zip
+!samples/*.zip
 resultados_eval*.json

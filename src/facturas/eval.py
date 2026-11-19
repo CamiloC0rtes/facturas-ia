@@ -28,7 +28,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .dian_xml import leer_factura_xml
-from .extractores import ExtractorReglas, extractor_llm
+from .extractores import ExtractorReglas, extractor_llm, extractor_vision
 from .models import Decision, FacturaExtraida
 from .pipeline import Pipeline
 
@@ -71,6 +71,7 @@ class Fila:
     errores: list[str] = field(default_factory=list)
     hallazgos: list[str] = field(default_factory=list)
     extraccion: dict | None = None  # lo que devolvió el extractor (para --reusar)
+    fuente: str | None = None
     evidencias: dict[str, str] = field(default_factory=dict)  # valor <- evidencia de campos frenados
 
     @property
@@ -134,7 +135,8 @@ def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] |
                                          f"'{getattr(r.factura, h.campo).evidencia}'"
                                 for h in r.hallazgos if h.campo and r.factura
                                 and h.severidad.value == "error"},
-                    extraccion=r.factura.model_dump(mode="json") if r.factura else None)
+                    extraccion=r.factura.model_dump(mode="json") if r.factura else None,
+                    fuente=r.fuente)
         for c in FacturaExtraida.CAMPOS:
             esp = getattr(etiqueta, c).valor
             obt = getattr(r.factura, c).valor if r.factura else None
@@ -184,6 +186,10 @@ def main() -> None:
     ap.add_argument("--modelo")
     ap.add_argument("--prompt", help="versión de prompt (v1, v2, ...)")
     ap.add_argument("--consenso", action="store_true", help="usar reglas como segunda opinión")
+    ap.add_argument("--vision", choices=["openai", "claude"],
+                    help="v0.6: modelo con visión para PDFs sin texto (escaneos, fotos)")
+    ap.add_argument("--vision-siempre", action="store_true",
+                    help="usar la visión también en PDFs con texto (para comparar)")
     ap.add_argument("--fuente", choices=["pdf", "xml"], default="pdf",
                     help="pdf: LLM sobre el PDF (por defecto). xml: camino v0.4 con el XML DIAN. "
                          "Ojo: con xml las etiquetas salen del mismo XML, así que la exactitud es "
@@ -195,12 +201,14 @@ def main() -> None:
 
     def factory() -> Pipeline:
         hoy = date.today()
+        vision = extractor_vision(args.vision, modelo=args.modelo, prompt_version=args.prompt)
         if args.llm:
             llm = extractor_llm(args.llm, modelo=args.modelo, prompt_version=args.prompt)
-            return Pipeline(extractor=llm, segundo=ExtractorReglas() if args.consenso else None, hoy=hoy)
-        return Pipeline(hoy=hoy)
+            return Pipeline(extractor=llm, segundo=ExtractorReglas() if args.consenso else None, hoy=hoy,
+                            vision=vision, vision_siempre=args.vision_siempre)
+        return Pipeline(hoy=hoy, vision=vision, vision_siempre=args.vision_siempre)
 
-    clave = {"openai": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(args.llm)
+    clave = {"openai": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(args.llm or args.vision)
     if clave and not args.reusar and not os.getenv(clave):
         raise SystemExit(f"Falta {clave}. En esta terminal: export {clave}=...  "
                          "(o guárdala como secreto de Codespaces para no repetirlo).")
@@ -231,9 +239,12 @@ def main() -> None:
     else:
         p = factory()
         res["config"] = {"extractor": p.extractor.nombre,
-                         "modelo": getattr(p.extractor, "modelo", None),
-                         "prompt": getattr(p.extractor, "prompt_version", None),
+                         "vision": p.vision.nombre if p.vision else None,
+                         "vision_siempre": args.vision_siempre,
+                         "modelo": getattr(p.vision or p.extractor, "modelo", None),
+                         "prompt": getattr(p.vision or p.extractor, "prompt_version", None),
                          "consenso": args.consenso}
+        res["fuentes"] = dict(Counter(f.fuente for f in filas))
     print("\n" + json.dumps(res, indent=2, ensure_ascii=False))
     if args.salida:
         args.salida.write_text(json.dumps({"resumen": res, "casos": [asdict(f) for f in filas]},

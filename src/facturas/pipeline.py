@@ -18,7 +18,7 @@ from .dian_xml import VALIDADO, cufe, leer_factura_xml, respuesta_dian
 from .extractores import Extractor, ExtractorReglas
 from .models import Cobro, Decision, FacturaExtraida, Hallazgo, Resultado, Severidad
 from .paquete import PaqueteInvalido, leer_zip
-from .texto import PDFProtegido, extraer_texto
+from .texto import PDFProtegido, extraer_texto, imagenes_pdf
 from .validacion import (
     comparar,
     verificar_fechas,
@@ -35,10 +35,15 @@ PLAZO_DEFECTO = timedelta(days=30)
 
 class Pipeline:
     def __init__(self, extractor: Extractor | None = None,
-                 segundo: Extractor | None = None, hoy: date | None = None):
+                 segundo: Extractor | None = None, hoy: date | None = None,
+                 vision=None, vision_siempre: bool = False):
         self.extractor = extractor or ExtractorReglas()
         self.segundo = segundo  # opcional, para consenso
         self.hoy = hoy
+        # v0.6: extractor multimodal para escaneados y fotos. Por defecto solo se usa cuando el
+        # PDF no tiene texto (OCR); `vision_siempre` lo usa también en PDFs nativos (para comparar).
+        self.vision = vision
+        self.vision_siempre = vision_siempre
         self._vistos: set[str] = set()  # en producción: tabla con índice único
         self._facturas: set[tuple[str, str]] = set()  # (NIT emisor, número): una factura = un cobro
 
@@ -125,11 +130,14 @@ class Pipeline:
             doc = extraer_texto(pdf)
         except PDFProtegido as e:
             return self._rechazo(nombre, sha, "pdf_protegido", f"{e}: enviar el ZIP con el XML o el PDF sin clave")
-        base = dict(archivo=nombre, sha256=sha, metodo_texto=doc.metodo, calidad=doc.calidad, fuente="pdf_llm",
+        usar_vision = self.vision is not None and (doc.metodo == "ocr" or self.vision_siempre)
+        extractor = self.vision if usar_vision else self.extractor
+        base = dict(archivo=nombre, sha256=sha, metodo_texto=doc.metodo, calidad=doc.calidad,
+                    fuente="pdf_vision" if usar_vision else "pdf_llm",
                     texto=doc.texto,
-                    extractor=self.extractor.nombre,
-                    modelo=getattr(self.extractor, "modelo", None),
-                    prompt_version=getattr(self.extractor, "prompt_version", None))
+                    extractor=extractor.nombre,
+                    modelo=getattr(extractor, "modelo", None),
+                    prompt_version=getattr(extractor, "prompt_version", None))
 
         # 1. Gate de calidad: no adivinar sobre imágenes ilegibles
         if doc.metodo == "ocr" and doc.calidad is not None and doc.calidad < UMBRAL_NITIDEZ:
@@ -137,8 +145,13 @@ class Pipeline:
                 Hallazgo(regla="imagen_borrosa", severidad=Severidad.ERROR,
                          mensaje=f"nitidez {doc.calidad:.0f} < {UMBRAL_NITIDEZ:.0f}: solicitar reenvío")])
 
-        # 2. Extracción (IA o reglas)
-        factura = self.extractor.extraer(doc.texto)
+        # 2. Extracción (IA o reglas). Con visión, el modelo lee la imagen y el texto del
+        #    OCR queda como lectura independiente: el grounding exige que cada número del
+        #    modelo aparezca con los mismos dígitos en el OCR ("la visión propone, el OCR confirma").
+        if usar_vision:
+            factura = self.vision.extraer_imagenes(imagenes_pdf(pdf))
+        else:
+            factura = self.extractor.extraer(doc.texto)
 
         # 3. Validación determinística
         hallazgos = verificar_grounding(factura, doc.texto)

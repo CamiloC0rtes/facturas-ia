@@ -92,7 +92,7 @@ class Resultado(BaseModel):
     archivo: str
     sha256: str
     metodo_texto: str  # "nativo" | "ocr" | "xml"
-    fuente: Optional[str] = None  # "xml_dian" (fuente de verdad) | "pdf_llm" (respaldo)
+    fuente: Optional[str] = None  # "xml_dian" (fuente de verdad) | "pdf_llm" | "pdf_vision" (respaldo)
     extractor: Optional[str] = None  # "reglas" | "openai" | "claude"
     modelo: Optional[str] = None
     prompt_version: Optional[str] = None

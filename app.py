@@ -15,6 +15,7 @@ from facturas.extractores import (
     ExtractorClaude,
     ExtractorOpenAI,
     ExtractorReglas,
+    extractor_vision,
 )
 from facturas.models import Campo, Decision, FacturaExtraida, Severidad
 from facturas.paquete import PaqueteInvalido, leer_zip
@@ -59,9 +60,13 @@ with st.sidebar:
                 os.environ["ANTHROPIC_API_KEY"] = key
         modelo = st.text_input("Modelo", os.getenv("FACTURAS_MODELO", "claude-sonnet-5-5"))
     prompt_v = PROMPT_VERSION
+    usar_vision = False
     if proveedor != "Reglas (sin IA)":
         versiones = list(PROMPTS)
         prompt_v = st.selectbox("Versión de prompt", versiones, index=versiones.index(PROMPT_VERSION))
+        usar_vision = st.checkbox("Visión para escaneados y fotos", value=True,
+                                  help="Si el PDF no tiene texto, el modelo lee la imagen y el OCR "
+                                       "confirma cada número (dos lecturas independientes).")
         consenso = st.checkbox("Consenso con extractor de reglas", value=False,
                                help="Con facturas reales el extractor de reglas falla seguido: "
                                     "activarlo manda casi todo a revisión.")
@@ -70,12 +75,14 @@ with st.sidebar:
 
 
 def crear_pipeline() -> Pipeline:
+    clave = {"OpenAI": "openai", "Claude": "claude"}.get(proveedor)
+    vision = extractor_vision(clave, modelo=modelo, prompt_version=prompt_v) if usar_vision else None
     if proveedor == "OpenAI":
         return Pipeline(extractor=ExtractorOpenAI(modelo=modelo, prompt_version=prompt_v),
-                        segundo=ExtractorReglas() if consenso else None)
+                        segundo=ExtractorReglas() if consenso else None, vision=vision)
     if proveedor == "Claude":
         return Pipeline(extractor=ExtractorClaude(modelo=modelo, prompt_version=prompt_v),
-                        segundo=ExtractorReglas() if consenso else None)
+                        segundo=ExtractorReglas() if consenso else None, vision=vision)
     return Pipeline()
 
 
@@ -88,14 +95,14 @@ subido = c1.file_uploader("Sube el ZIP de la factura electrónica (PDF + XML) o 
                           type=["zip", "pdf"],
                           help="Con el ZIP se usa el XML de la DIAN como fuente de verdad (sin IA). "
                                "Con solo el PDF se usa el extractor elegido.")
-ejemplos = sorted(p.name for p in SAMPLES.glob("*.pdf")) if SAMPLES.exists() else []
+ejemplos = sorted(p.name for p in [*SAMPLES.glob("*.zip"), *SAMPLES.glob("*.pdf")]) if SAMPLES.exists() else []
 ejemplo = c2.selectbox("…o usa un ejemplo", ["—"] + ejemplos)
 
 pdf, nombre, es_zip = None, None, False
 if subido:
     pdf, nombre, es_zip = subido.getvalue(), subido.name, subido.name.lower().endswith(".zip")
 elif ejemplo != "—":
-    pdf, nombre = (SAMPLES / ejemplo).read_bytes(), ejemplo
+    pdf, nombre, es_zip = (SAMPLES / ejemplo).read_bytes(), ejemplo, ejemplo.endswith(".zip")
 
 if pdf and st.button("Procesar", type="primary"):
     with st.spinner("Leyendo, extrayendo y validando…"):
@@ -126,7 +133,8 @@ else:
     st.error("Rechazada: " + "; ".join(h.mensaje for h in r.hallazgos))
 
 m = st.columns(5)
-m[0].metric("Fuente", {"xml_dian": "XML DIAN", "pdf_llm": "PDF"}.get(r.fuente, "—"))
+m[0].metric("Fuente", {"xml_dian": "XML DIAN", "pdf_llm": "PDF (texto)",
+                       "pdf_vision": "PDF (visión)"}.get(r.fuente, "—"))
 m[1].metric("Lectura", r.metodo_texto)
 m[2].metric("Extractor", r.extractor or "—")
 m[3].metric("Modelo", r.modelo or "—")

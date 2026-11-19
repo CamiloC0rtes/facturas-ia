@@ -103,10 +103,11 @@ Los 4 falsos aprobados **no eran alucinaciones**: el modelo tomó valores que s�
 - Validación de líneas contra el subtotal
 - Subir `PROMPT_VERSION` y comparar contra v1 en la evaluación
 
-## v0.6 Visión
-- Segunda extracción con un modelo multimodal sobre la imagen (no sobre el texto OCR)
-- Consenso entre OCR+LLM y visión para escaneados y fotos de celular
-- Ubicación de la evidencia (cajas) para PDFs escaneados más precisa
+## v0.6 Visión ✅ (código) · ⏳ (medición)
+- ✅ `ExtractorVisionOpenAI` / `ExtractorVisionClaude`: el modelo recibe las páginas como imagen (máx. 3) con el mismo esquema estricto y el prompt + una adenda para imágenes
+- ✅ **La visión propone, el OCR confirma**: dos lecturas independientes; cada número del modelo debe existir con los mismos dígitos en el texto de Tesseract. Por defecto solo se usa en PDFs sin texto (`--vision-siempre` para comparar en nativos)
+- ✅ `scripts/escanear_set.py`: convierte el set real en «escaneado» (200 dpi, rotación, ruido, JPEG) o «foto» (perspectiva, iluminación desigual, desenfoque, JPEG fuerte), conservando el XML como etiqueta. Calidad del set «foto»: nitidez mínima 31, mediana 60; 5 de 52 con confianza OCR < 60 %
+- ⏳ Medir sobre «foto»: LLM sobre texto OCR vs visión + OCR
 
 ## v0.7 Persistencia y procesamiento asíncrono
 - PostgreSQL con índice único `(nit_emisor, numero)` para deduplicar

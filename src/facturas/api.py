@@ -10,7 +10,7 @@ from .extractores import ExtractorReglas, extractor_llm
 from .models import Resultado
 from .pipeline import Pipeline
 
-app = FastAPI(title="facturas-ia", version="0.4.0")
+app = FastAPI(title="facturas-ia", version="0.6.0")
 
 
 def _crear_pipeline() -> Pipeline:

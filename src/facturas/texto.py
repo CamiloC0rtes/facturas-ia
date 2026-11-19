@@ -91,3 +91,11 @@ def extraer_texto(pdf_bytes: bytes, lang: str = "spa", password: str | None = No
         calidad=min(calidades) if calidades else 0.0,
         confianza_ocr=sum(confs) / len(confs) if confs else 0.0,
     )
+
+
+def imagenes_pdf(pdf_bytes: bytes, dpi: int = 200, max_paginas: int = 3) -> list[bytes]:
+    """Páginas como PNG para un modelo con visión (máx. `max_paginas`, para acotar costo)."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    if doc.needs_pass and not doc.authenticate(""):
+        raise PDFProtegido("el PDF está protegido con contraseña")
+    return [doc[i].get_pixmap(dpi=dpi).tobytes("png") for i in range(min(len(doc), max_paginas))]
