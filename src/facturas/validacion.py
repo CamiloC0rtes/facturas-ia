@@ -9,7 +9,8 @@ from rapidfuzz import fuzz
 
 from .models import FacturaExtraida, Hallazgo, Severidad
 
-TOLERANCIA = Decimal("1.00")  # pesos, por redondeos
+TOLERANCIA = Decimal("1.00")  # pesos: valor vs. su evidencia
+TOLERANCIA_SUMA = Decimal("100")  # pesos: algunos emisores redondean el total (ETB: $2,63)
 TARIFAS_IVA = (Decimal("0.19"), Decimal("0.05"), Decimal("0"))
 MAX_TARIFA_IVA = Decimal("0.19")
 UMBRAL_GROUNDING = 90
@@ -132,10 +133,13 @@ def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallaz
 
     sub, iva, tot = f.subtotal.valor, f.iva.valor, f.total.valor
     if sub is not None and tot is not None:
-        esperado = sub + (iva or 0)
-        if abs(esperado - tot) > TOLERANCIA:
-            detalle = f"subtotal + IVA ({esperado})" if iva is not None else f"subtotal ({sub}) sin IVA"
-            err("suma_total", f"{detalle} != total ({tot})", "total")
+        extras = (f.otros_impuestos.valor or 0) + (f.cargos.valor or 0) - (f.descuentos.valor or 0)
+        esperado = sub + (iva or 0) + extras
+        if abs(esperado - tot) > TOLERANCIA_SUMA:
+            partes = ["subtotal", "IVA" if iva is not None else "sin IVA"]
+            partes += [n for n in ("otros_impuestos", "cargos") if getattr(f, n).valor]
+            partes += ["- descuentos"] if f.descuentos.valor else []
+            err("suma_total", f"{' + '.join(partes)} = {esperado} != total ({tot})", "total")
     if sub and iva is not None:
         if iva > sub * MAX_TARIFA_IVA + TOLERANCIA:
             err("tarifa_iva", f"IVA {iva} supera el 19% de {sub}", "iva")

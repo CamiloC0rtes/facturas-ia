@@ -92,7 +92,7 @@ class ExtractorReglas:
                 datos[campo] = Campo()
                 continue
             crudo, evidencia = m.group(1), m.group(0).strip()
-            if campo in ("subtotal", "iva", "total"):
+            if campo in FacturaExtraida.MONTOS:
                 valor = parse_monto(crudo)
             elif campo.startswith("fecha"):
                 valor = parse_fecha(crudo)
@@ -142,6 +142,40 @@ Formato:
 - Montos como string exactamente como aparecen (ej. "750,500.00", "1.190.000", "630.672,27").
 - Fechas en formato YYYY-MM-DD.
 - NIT tal como aparece, con dígito de verificación si lo tiene (ej. "900.123.456-8").""",
+    # v3: a partir de la evaluación con 54 facturas (33 emisores): número con prefijo,
+    # subtotal e IVA intercambiados, y totales con descuentos, INC, bolsas o propina.
+    "v3": """Eres un extractor de datos de facturas electrónicas colombianas (DIAN).
+
+Reglas estrictas:
+1. Extrae SOLO lo que aparece literalmente en el texto. No calcules, no sumes, no deduzcas.
+2. Si un valor no aparece o es ilegible, devuelve valor = null y evidencia = null.
+3. En `evidencia` copia EXACTAMENTE el fragmento del texto (máx. 80 caracteres) que contiene
+   el valor. Si no puedes copiar un fragmento literal que lo contenga, el valor debe ser null.
+
+Definición de cada campo:
+- numero: número de la factura INCLUYENDO su prefijo, tal como aparece (ej. "FE-1024",
+  "TDCR 28625", "SETP990001234"). NUNCA es el número de resolución de facturación (suele tener
+  14 dígitos y empezar por 187), ni el CUFE, ni un número de pedido, orden o caja.
+- nit_emisor: NIT de quien vende y emite la factura.
+- nit_cliente: NIT o cédula del adquiriente (comprador). Puede no tener dígito de verificación.
+  NO confundas ninguno de los dos con el NIT del software o proveedor tecnológico de
+  facturación, ni con un teléfono.
+- fecha_emision: fecha de expedición de la factura. NO la de la resolución ni la de validación.
+- fecha_vencimiento: fecha de vencimiento o límite de pago. null si no aparece.
+- subtotal: suma de los ítems ANTES de impuestos y ANTES de descuentos globales
+  (subtotal, valor bruto, total base). Es mayor que el IVA: no los intercambies.
+- iva: valor total del IVA (no la tarifa en %). null si la factura no muestra IVA.
+- descuentos: descuentos globales del documento. null si no hay.
+- otros_impuestos: impuestos distintos al IVA que suman al total: impuesto al consumo (INC),
+  impuesto a las bolsas plásticas, etc. Si hay varios, usa solo un total que ya aparezca
+  impreso; no los sumes tú. null si no hay.
+- cargos: cargos que suman al total: propina, servicio voluntario, fletes. null si no hay.
+- total: valor total a pagar.
+
+Formato:
+- Montos como string exactamente como aparecen (ej. "750,500.00", "1.190.000", "630.672,27").
+- Fechas en formato YYYY-MM-DD.
+- NIT tal como aparece, con dígito de verificación si lo tiene (ej. "900.123.456-8").""",
 }
 PROMPT_VERSION = os.getenv("FACTURAS_PROMPT", "v2")
 PROMPT_SISTEMA = PROMPTS[PROMPT_VERSION]
@@ -154,7 +188,7 @@ _CAMPO_SCHEMA = {
     },
     "required": ["valor", "evidencia"],
 }
-_CAMPOS = list(_PATRONES.keys())
+_CAMPOS = list(FacturaExtraida.CAMPOS)
 TOOL = {
     "name": "registrar_factura",
     "description": "Registra los campos extraídos de la factura con su evidencia literal.",
@@ -260,7 +294,7 @@ def a_modelo(crudo: dict) -> FacturaExtraida:
     for campo in _CAMPOS:
         c = crudo.get(campo) or {}
         v = c.get("valor")
-        if campo in ("subtotal", "iva", "total"):
+        if campo in FacturaExtraida.MONTOS:
             v = parse_monto(v)
         elif campo.startswith("fecha"):
             v = parse_fecha(v)

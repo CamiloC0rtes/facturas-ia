@@ -211,3 +211,23 @@ def test_monto_redondeado_en_pdf_no_bloquea():
     texto = "Subtotal $ 205.529"
     f = factura(subtotal=Campo(valor=Decimal("205529.41"), evidencia="Subtotal $ 205.529"))
     assert not [h for h in verificar_grounding(f, texto) if h.campo == "subtotal"]
+
+
+def test_total_con_descuento_inc_y_propina():
+    # restaurante: subtotal + INC + propina; tienda: subtotal - descuento global
+    rest = factura(iva=Campo(), subtotal=Campo(valor=Decimal("141204"), evidencia="x"),
+                   otros_impuestos=Campo(valor=Decimal("11296"), evidencia="x"),
+                   cargos=Campo(valor=Decimal("14100"), evidencia="x"),
+                   total=Campo(valor=Decimal("166600"), evidencia="x"))
+    tienda = factura(iva=Campo(), subtotal=Campo(valor=Decimal("64759"), evidencia="x"),
+                     descuentos=Campo(valor=Decimal("40706"), evidencia="x"),
+                     total=Campo(valor=Decimal("24053"), evidencia="x"))
+    redondeo = factura(subtotal=Campo(valor=Decimal("94023"), evidencia="x"),
+                       iva=Campo(valor=Decimal("17864.37"), evidencia="x"),
+                       total=Campo(valor=Decimal("111890"), evidencia="x"))
+    for f in (rest, tienda, redondeo):
+        assert not [h for h in verificar_reglas(f, hoy=HOY) if h.regla == "suma_total"]
+    # sin declarar el descuento, sí debe bloquear
+    sin = factura(iva=Campo(), subtotal=Campo(valor=Decimal("64759"), evidencia="x"),
+                  total=Campo(valor=Decimal("24053"), evidencia="x"))
+    assert any(h.regla == "suma_total" for h in verificar_reglas(sin, hoy=HOY))

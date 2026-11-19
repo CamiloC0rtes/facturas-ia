@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .extractores import Extractor, ExtractorReglas
 from .models import Cobro, Decision, FacturaExtraida, Hallazgo, Resultado, Severidad
-from .texto import extraer_texto
+from .texto import PDFProtegido, extraer_texto
 from .validacion import comparar, verificar_grounding, verificar_reglas, verificar_roles
 
 UMBRAL_NITIDEZ = 30.0  # por debajo: pedir reenvío. Calibrar con facturas reales.
@@ -33,7 +33,13 @@ class Pipeline:
                                                  mensaje="archivo ya procesado")])
         self._vistos.add(sha)
 
-        doc = extraer_texto(pdf)
+        try:
+            doc = extraer_texto(pdf)
+        except PDFProtegido as e:
+            return Resultado(archivo=nombre, sha256=sha, metodo_texto="-", extractor=self.extractor.nombre,
+                             decision=Decision.RECHAZADO,
+                             hallazgos=[Hallazgo(regla="pdf_protegido", severidad=Severidad.ERROR,
+                                                 mensaje=f"{e}: usar el XML o pedir el PDF sin clave")])
         base = dict(archivo=nombre, sha256=sha, metodo_texto=doc.metodo, calidad=doc.calidad,
                     texto=doc.texto,
                     extractor=self.extractor.nombre,

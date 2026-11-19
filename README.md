@@ -45,7 +45,9 @@ python -m facturas.eval eval_privado --reusar resultados_eval_v2.json   # cambia
 
 Reporta exactitud por campo, tasa de automatización, latencia, **falsos aprobados** (cobros automáticos con algún dato crítico mal) y **revisiones innecesarias** (todo estaba bien, pero una regla la frenó), con las reglas que más frenan.
 
-### Resultados (21 facturas electrónicas reales, 17 emisores)
+### Resultados (primera ronda: 21 facturas electrónicas reales, 17 emisores)
+
+> El set se amplió a 54 facturas de 33 emisores; la comparación `v2` vs `v3` sobre ese set está en curso.
 
 | | Reglas (sin IA) | gpt-4.1-mini · prompt v1 | + reglas de rol | + prompt v2 | **+ grounding por dígitos** |
 |---|---|---|---|---|---|

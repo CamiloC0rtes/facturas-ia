@@ -45,8 +45,10 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
 - ✅ `--reusar`: re-valida extracciones guardadas sin volver a llamar al LLM (iterar reglas cuesta $0)
 - ✅ Medido: automatización 33 % → **62 %**, revisiones innecesarias 9 → 2, **0 falsos aprobados**
 - ✅ Tolerancia de $1 entre el valor y su evidencia (el PDF muestra montos redondeados)
-- ⏳ Prompt `v3`: número de factura con prefijo y nunca el de resolución; subtotal antes de IVA. Medir contra `v2`
-- ⏳ Ampliar el set a 50+ facturas para que las métricas sean más estables
+- ✅ Set ampliado a **54 facturas de 33 emisores** (Falabella, Puma, Disney, Claro, ETB, Siigo, Forus, Smart Fit…). Las reglas de rol siguen con 0 falsas alarmas sobre los 33 emisores nuevos: no estaban sobreajustadas a los primeros 21
+- ✅ Lo que trajo el set ampliado: PDF con clave (Claro) → rechazo con motivo en vez de caída; totales con **descuentos globales, impuesto al consumo, impuesto a bolsas y propina** → campos `descuentos`, `otros_impuestos`, `cargos` y regla total = subtotal + IVA + otros + cargos − descuentos; redondeo del total (ETB, $2,63) → tolerancia de $100 en la suma. Sobre las 54 etiquetas correctas: 0 falsas alarmas
+- ✅ Prompt `v3`: número con prefijo y nunca el de resolución, subtotal antes de IVA y descuentos, y los campos nuevos
+- ⏳ Medir `v2` vs `v3` sobre las 54 facturas
 - ⏳ Próximo prompt `v3`: prefijo del número de factura (`TDCR28625`, no `28625`) y subtotal antes de IVA en facturas con precios IVA incluido
 
 **Línea base (extractor de reglas, sin IA, 21 facturas reales):** exactitud por campo entre 0 % y 57 %, 0 % de automatización y **0 falsos aprobados**. Las reglas no sirven para extraer de formatos reales, pero las validaciones cumplen su función: nada mal leído llega a cobro.

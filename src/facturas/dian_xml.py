@@ -54,10 +54,13 @@ def leer_factura_xml(xml: bytes) -> FacturaExtraida:
     inv = _invoice(xml)
     total = inv.find("cac:LegalMonetaryTotal", NS)
 
-    iva = Decimal("0")
+    iva, otros = Decimal("0"), Decimal("0")
     for tt in inv.findall("cac:TaxTotal", NS):
+        monto = Decimal(_txt(tt, "cbc:TaxAmount") or "0")
         if _txt(tt, ".//cac:TaxCategory/cac:TaxScheme/cbc:ID") == IVA:
-            iva += Decimal(_txt(tt, "cbc:TaxAmount") or "0")
+            iva += monto
+        else:  # 04 INC, 22 bolsas, etc.
+            otros += monto
 
     def dec(ruta: str) -> Decimal | None:
         v = _txt(total, ruta)
@@ -82,6 +85,9 @@ def leer_factura_xml(xml: bytes) -> FacturaExtraida:
         subtotal=c(dec("cbc:LineExtensionAmount")),
         iva=c(iva),
         total=c(dec("cbc:PayableAmount")),
+        descuentos=c(dec("cbc:AllowanceTotalAmount") or Decimal("0")),
+        otros_impuestos=c(otros),
+        cargos=c(dec("cbc:ChargeTotalAmount") or Decimal("0")),
     )
 
 

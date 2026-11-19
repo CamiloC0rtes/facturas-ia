@@ -57,8 +57,14 @@ def _pagina_a_gris(pagina: fitz.Page) -> np.ndarray:
     return np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width)
 
 
-def extraer_texto(pdf_bytes: bytes, lang: str = "spa") -> TextoDocumento:
+class PDFProtegido(Exception):
+    """El PDF pide contraseña (p. ej. facturas de telecomunicaciones con la cédula)."""
+
+
+def extraer_texto(pdf_bytes: bytes, lang: str = "spa", password: str | None = None) -> TextoDocumento:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    if doc.needs_pass and not doc.authenticate(password or ""):
+        raise PDFProtegido("el PDF está protegido con contraseña")
 
     nativo = "\n".join(p.get_text() for p in doc)
     if len(nativo.strip()) >= MIN_CHARS_NATIVO:

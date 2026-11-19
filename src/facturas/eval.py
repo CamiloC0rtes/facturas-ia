@@ -44,13 +44,13 @@ def _norm_nit(v) -> str:
 
 
 def igual(campo: str, esperado, obtenido) -> bool:
-    if campo == "iva" and obtenido is None and esperado == 0:
-        return True  # factura sin IVA: no mostrarlo equivale a 0
+    if campo in ("iva", "descuentos", "otros_impuestos", "cargos") and obtenido is None and esperado == 0:
+        return True  # no mostrarlo equivale a 0
     if esperado is None:
         return obtenido is None
     if obtenido is None:
         return False
-    if campo in ("subtotal", "iva", "total"):
+    if campo in FacturaExtraida.MONTOS:
         return abs(Decimal(esperado) - Decimal(obtenido)) <= TOL
     if campo.startswith("nit"):
         return _norm_nit(esperado) == _norm_nit(obtenido)

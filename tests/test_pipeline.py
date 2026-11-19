@@ -148,3 +148,13 @@ def test_api(pdfs, monkeypatch):
     r = cliente.post("/facturas", files={"archivo": ("f.pdf", pdfs["inconsistente"], "application/pdf")})
     assert r.status_code == 200
     assert r.json()["decision"] == "revision"
+
+
+def test_pdf_protegido_se_rechaza_sin_caerse(pdfs):
+    import pymupdf
+
+    doc = pymupdf.open(stream=pdfs["nativa"], filetype="pdf")
+    protegido = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="1000491862", owner_pw="x")
+    r = Pipeline(hoy=HOY).procesar(protegido)
+    assert r.decision == Decision.RECHAZADO
+    assert r.hallazgos[0].regla == "pdf_protegido"

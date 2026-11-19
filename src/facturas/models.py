@@ -40,6 +40,10 @@ class FacturaExtraida(BaseModel):
     subtotal: Campo[Decimal] = Campo()
     iva: Campo[Decimal] = Campo()
     total: Campo[Decimal] = Campo()
+    # componentes adicionales del total, vistos en facturas reales (v0.3)
+    descuentos: Campo[Decimal] = Campo()  # descuentos globales del documento
+    otros_impuestos: Campo[Decimal] = Campo()  # INC (impuesto al consumo), bolsas, etc.
+    cargos: Campo[Decimal] = Campo()  # propina / servicio voluntario, fletes
     lineas: list[LineaFactura] = []
 
     # Sin estos no se puede cobrar. El IVA no es crítico: muchas facturas reales
@@ -52,7 +56,9 @@ class FacturaExtraida(BaseModel):
         "subtotal",
         "total",
     )
-    CAMPOS: ClassVar[tuple[str, ...]] = CAMPOS_CRITICOS + ("iva", "fecha_vencimiento")
+    CAMPOS: ClassVar[tuple[str, ...]] = CAMPOS_CRITICOS + (
+        "iva", "fecha_vencimiento", "descuentos", "otros_impuestos", "cargos")
+    MONTOS: ClassVar[tuple[str, ...]] = ("subtotal", "iva", "total", "descuentos", "otros_impuestos", "cargos")
 
 
 class Severidad(str, Enum):
