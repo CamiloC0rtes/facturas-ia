@@ -83,3 +83,25 @@ def test_tercera_lectura_confirma_pero_exige_digitos_exactos(escaneada, monkeypa
     llamadas.clear()
     Pipeline(hoy=HOY, vision=ExtractorVisionOpenAI(client=FakeVision(BIEN), modelo="fake")).procesar(escaneada)
     assert not llamadas  # el OCR principal ya confirmó todo: no hay tercera lectura
+
+
+def test_reusar_replica_el_camino_de_vision(tmp_path, escaneada):
+    """--reusar de una corrida con visión debe volver a pasar por la visión (y la tercera lectura)."""
+    import json
+
+    from test_dian_xml import ATTACHED
+
+    from facturas.eval import cargar_cache, evaluar
+
+    caso = tmp_path / "datos" / "f01"
+    caso.mkdir(parents=True)
+    (caso / "f.pdf").write_bytes(escaneada)
+    (caso / "f.xml").write_bytes(ATTACHED)
+    original = evaluar(tmp_path / "datos", lambda: Pipeline(
+        hoy=HOY, vision=ExtractorVisionOpenAI(client=FakeVision(BIEN), modelo="fake")))
+    ruta = tmp_path / "r.json"
+    ruta.write_text(json.dumps({"resumen": {"config": {"vision": "openai_vision", "modelo": "fake"}},
+                                "casos": [{"caso": f.caso, "extraccion": f.extraccion} for f in original]}))
+    cache, cfg = cargar_cache(ruta)
+    repetida = evaluar(tmp_path / "datos", lambda: None, cache, cfg)
+    assert original[0].fuente == repetida[0].fuente == "pdf_vision"

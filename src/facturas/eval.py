@@ -93,6 +93,9 @@ class _ExtraccionGuardada:
     def extraer(self, texto: str) -> FacturaExtraida:
         return self.factura
 
+    def extraer_imagenes(self, imagenes) -> FacturaExtraida:  # para replicar el camino de visión
+        return self.factura
+
 
 def cargar_cache(ruta: Path) -> tuple[dict[str, FacturaExtraida], dict]:
     datos = json.loads(ruta.read_text())
@@ -120,8 +123,14 @@ def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] |
         t0 = time.perf_counter()
         if cache is not None and caso.name in cache:
             cfg = config_cache or {}
-            pipe = Pipeline(extractor=_ExtraccionGuardada(cache[caso.name], cfg.get("modelo"),
-                                                          cfg.get("prompt")), hoy=date.today())
+            guardada = _ExtraccionGuardada(cache[caso.name], cfg.get("modelo"), cfg.get("prompt"))
+            if cfg.get("vision"):
+                # la corrida original usó visión: se replica ese camino (incluida la tercera lectura)
+                guardada.nombre = cfg["vision"]
+                pipe = Pipeline(extractor=_ExtraccionGuardada(cache[caso.name]), vision=guardada,
+                                vision_siempre=bool(cfg.get("vision_siempre")), hoy=date.today())
+            else:
+                pipe = Pipeline(extractor=guardada, hoy=date.today())
         else:
             pipe = pipeline_factory()
         if usar_xml:
@@ -234,6 +243,7 @@ def main() -> None:
                 print(f"          {campo}: {ev}")
 
     res = resumen(filas)
+    res["fuentes"] = dict(Counter(f.fuente for f in filas))
     if args.fuente == "xml":
         res["config"] = {"fuente": "xml_dian", "nota": "exactitud circular: etiquetas y extracción salen del mismo XML"}
     elif config_cache:
@@ -246,7 +256,6 @@ def main() -> None:
                          "modelo": getattr(p.vision or p.extractor, "modelo", None),
                          "prompt": getattr(p.vision or p.extractor, "prompt_version", None),
                          "consenso": args.consenso}
-        res["fuentes"] = dict(Counter(f.fuente for f in filas))
     print("\n" + json.dumps(res, indent=2, ensure_ascii=False))
     if args.salida:
         args.salida.write_text(json.dumps({"resumen": res, "casos": [asdict(f) for f in filas]},
