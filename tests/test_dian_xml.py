@@ -71,3 +71,27 @@ def test_eval_sobre_carpeta(tmp_path):
     assert r["exactitud_por_campo"]["total"] == 1.0
     assert r["exactitud_por_campo"]["numero"] == 1.0  # FE-1024 == FE1024 normalizado
     assert r["falsos_aprobados"] == 0
+
+
+def test_eval_reusar_extracciones(tmp_path):
+    import json
+
+    import generar_demo
+    from facturas.eval import cargar_cache, evaluar
+    from facturas.pipeline import Pipeline
+
+    caso = tmp_path / "datos" / "f01"
+    caso.mkdir(parents=True)
+    (caso / "f.pdf").write_bytes(generar_demo.factura_pdf())
+    (caso / "f.xml").write_bytes(ATTACHED)
+    filas = evaluar(tmp_path / "datos", lambda: Pipeline(hoy=date(2026, 11, 18)))
+    ruta = tmp_path / "r.json"
+    ruta.write_text(json.dumps({"resumen": {"config": {"modelo": "x"}},
+                                "casos": [{"caso": f.caso, "extraccion": f.extraccion} for f in filas]}))
+    cache, cfg = cargar_cache(ruta)
+
+    def no_llamar():
+        raise AssertionError("no debería crear un extractor nuevo")
+
+    filas2 = evaluar(tmp_path / "datos", no_llamar, cache, cfg)
+    assert filas2[0].correctos == filas[0].correctos

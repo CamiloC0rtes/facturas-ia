@@ -40,6 +40,7 @@ Cada factura electrónica colombiana llega por correo en un ZIP con el PDF **y e
 python -m facturas.eval eval_privado                                   # línea base sin IA
 python -m facturas.eval eval_privado --llm openai --prompt v1 --salida resultados_eval_v1.json
 python -m facturas.eval eval_privado --llm openai --prompt v2 --salida resultados_eval_v2.json
+python -m facturas.eval eval_privado --reusar resultados_eval_v2.json   # cambiar reglas sin pagar llamadas
 ```
 
 Reporta exactitud por campo, tasa de automatización, latencia, **falsos aprobados** (cobros automáticos con algún dato crítico mal) y **revisiones innecesarias** (todo estaba bien, pero una regla la frenó), con las reglas que más frenan.

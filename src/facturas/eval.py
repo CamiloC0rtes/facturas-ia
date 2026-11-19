@@ -10,6 +10,7 @@ Uso:
     python -m facturas.eval eval_privado                       # extractor de reglas
     python -m facturas.eval eval_privado --llm openai          # prompt por defecto
     python -m facturas.eval eval_privado --llm openai --prompt v1 --modelo gpt-4.1-mini
+    python -m facturas.eval eval_privado --reusar resultados.json   # re-valida sin llamar al LLM
 
 Las facturas son datos personales: la carpeta va en .gitignore y solo se publican métricas.
 """
@@ -66,13 +67,35 @@ class Fila:
     correctos: dict[str, bool] = field(default_factory=dict)
     errores: list[str] = field(default_factory=list)
     hallazgos: list[str] = field(default_factory=list)
+    extraccion: dict | None = None  # lo que devolvió el extractor (para --reusar)
 
     @property
     def criticos_ok(self) -> bool:
         return all(self.correctos[c] for c in FacturaExtraida.CAMPOS_CRITICOS)
 
 
-def evaluar(carpeta: Path, pipeline_factory) -> list[Fila]:
+class _ExtraccionGuardada:
+    """Extractor que devuelve una extracción ya hecha: permite cambiar reglas y
+    re-evaluar sin volver a pagar llamadas al LLM."""
+
+    nombre = "cache"
+
+    def __init__(self, factura: FacturaExtraida, modelo=None, prompt_version=None):
+        self.factura, self.modelo, self.prompt_version = factura, modelo, prompt_version
+
+    def extraer(self, texto: str) -> FacturaExtraida:
+        return self.factura
+
+
+def cargar_cache(ruta: Path) -> tuple[dict[str, FacturaExtraida], dict]:
+    datos = json.loads(ruta.read_text())
+    cache = {c["caso"]: FacturaExtraida.model_validate(c["extraccion"])
+             for c in datos["casos"] if c.get("extraccion")}
+    return cache, datos["resumen"].get("config", {})
+
+
+def evaluar(carpeta: Path, pipeline_factory, cache: dict[str, FacturaExtraida] | None = None,
+            config_cache: dict | None = None) -> list[Fila]:
     filas = []
     for caso in sorted(p for p in carpeta.iterdir() if p.is_dir()):
         pdfs, xmls = list(caso.glob("*.pdf")), list(caso.glob("*.xml"))
@@ -80,12 +103,19 @@ def evaluar(carpeta: Path, pipeline_factory) -> list[Fila]:
             continue
         etiqueta = leer_factura_xml(xmls[0].read_bytes())
         t0 = time.perf_counter()
-        r = pipeline_factory().procesar(pdfs[0].read_bytes(), caso.name)
+        if cache is not None and caso.name in cache:
+            cfg = config_cache or {}
+            pipe = Pipeline(extractor=_ExtraccionGuardada(cache[caso.name], cfg.get("modelo"),
+                                                          cfg.get("prompt")), hoy=date.today())
+        else:
+            pipe = pipeline_factory()
+        r = pipe.procesar(pdfs[0].read_bytes(), caso.name)
         seg = time.perf_counter() - t0
 
         fila = Fila(caso.name, r.decision.value, round(seg, 2),
                     hallazgos=[f"{h.regla}:{h.campo or ''}" for h in r.hallazgos
-                               if h.severidad.value == "error"])
+                               if h.severidad.value == "error"],
+                    extraccion=r.factura.model_dump(mode="json") if r.factura else None)
         for c in FacturaExtraida.CAMPOS:
             esp = getattr(etiqueta, c).valor
             obt = getattr(r.factura, c).valor if r.factura else None
@@ -125,7 +155,9 @@ def main() -> None:
     ap.add_argument("--modelo")
     ap.add_argument("--prompt", help="versión de prompt (v1, v2, ...)")
     ap.add_argument("--consenso", action="store_true", help="usar reglas como segunda opinión")
-    ap.add_argument("--salida", type=Path, help="guardar detalle en JSON")
+    ap.add_argument("--salida", type=Path, help="guardar detalle y extracciones en JSON")
+    ap.add_argument("--reusar", type=Path,
+                    help="JSON de una corrida anterior: re-valida sus extracciones sin llamar al LLM")
     args = ap.parse_args()
 
     def factory() -> Pipeline:
@@ -138,7 +170,8 @@ def main() -> None:
     if not args.carpeta.is_dir():
         raise SystemExit(f"No existe la carpeta '{args.carpeta}'. Descomprime ahí las facturas "
                          "(una subcarpeta por factura con su .pdf y su .xml).")
-    filas = evaluar(args.carpeta, factory)
+    cache, config_cache = cargar_cache(args.reusar) if args.reusar else (None, None)
+    filas = evaluar(args.carpeta, factory, cache, config_cache)
     if not filas:
         raise SystemExit(f"No hay casos (carpetas con .pdf y .xml) en {args.carpeta}")
 
@@ -152,11 +185,14 @@ def main() -> None:
             print(f"        > frenada por: {', '.join(f.hallazgos) or '-'}")
 
     res = resumen(filas)
-    p = factory()
-    res["config"] = {"extractor": p.extractor.nombre,
-                     "modelo": getattr(p.extractor, "modelo", None),
-                     "prompt": getattr(p.extractor, "prompt_version", None),
-                     "consenso": args.consenso}
+    if config_cache:
+        res["config"] = {**config_cache, "reusado_de": str(args.reusar)}
+    else:
+        p = factory()
+        res["config"] = {"extractor": p.extractor.nombre,
+                         "modelo": getattr(p.extractor, "modelo", None),
+                         "prompt": getattr(p.extractor, "prompt_version", None),
+                         "consenso": args.consenso}
     print("\n" + json.dumps(res, indent=2, ensure_ascii=False))
     if args.salida:
         args.salida.write_text(json.dumps({"resumen": res, "casos": [asdict(f) for f in filas]},

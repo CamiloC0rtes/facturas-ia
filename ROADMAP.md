@@ -40,7 +40,10 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
 - ✅ Prompts versionados (`v1`, `v2`) para comparar
 - ✅ Primera corrida con OpenAI (`gpt-4.1-mini`, prompt `v1`): **4 falsos aprobados** → reglas de rol
 - ✅ Re-corrida con reglas de rol: `v1` 0 falsos aprobados / 5 % automatización; `v2` **0 falsos aprobados / 29 % automatización**, NIT cliente 24 % → 95 % (tabla en el README)
-- ⏳ Reducir revisiones innecesarias: 7 facturas con todo correcto frenadas por alguna regla (la evaluación ahora reporta cuáles)
+- ✅ Diagnóstico de revisiones innecesarias (v2: 9 facturas con todo correcto frenadas). Causas: formato, no contenido — NIT con espacio o puntos en la evidencia, fechas tipo `16-ago-2026`, rótulo y valor unidos desde una tabla, DV de la cédula del cliente mal impreso por el emisor
+- ✅ Ajuste: el grounding exige que los **números** existan con los mismos dígitos en el documento (la similitud del rótulo pasa a ser secundaria); fechas en formatos flexibles; DV del cliente pasa a advertencia. El total alucinado de una tabla sigue bloqueado (test)
+- ✅ `--reusar`: re-valida extracciones guardadas sin volver a llamar al LLM (iterar reglas cuesta $0)
+- ⏳ Medir el ajuste con `--reusar resultados_eval_v2.json`
 - ⏳ Próximo prompt `v3`: prefijo del número de factura (`TDCR28625`, no `28625`) y subtotal antes de IVA en facturas con precios IVA incluido
 
 **Línea base (extractor de reglas, sin IA, 21 facturas reales):** exactitud por campo entre 0 % y 57 %, 0 % de automatización y **0 falsos aprobados**. Las reglas no sirven para extraer de formatos reales, pero las validaciones cumplen su función: nada mal leído llega a cobro.

@@ -40,21 +40,42 @@ def _norm(s: str) -> str:
 _NUMERO = re.compile(r"\d[\d.,/-]*\d|\d")
 
 
+def _partes_numericas(texto: str) -> list[str]:
+    """Números como secuencias de dígitos, partiendo por guion: '900.123.456-8' -> ['900123456', '8']."""
+    return [re.sub(r"\D", "", p) for t in _NUMERO.findall(texto) for p in t.split("-") if re.search(r"\d", p)]
+
+
 def _numeros_exactos(evidencia: str, fuente: str) -> bool:
-    """La coincidencia difusa perdona un dígito cambiado (1.190.000 vs 1.290.000
-    da 96%). Por eso cada número de la evidencia debe aparecer EXACTO en la fuente."""
-    return all(n in fuente for n in _NUMERO.findall(evidencia))
+    """La coincidencia difusa perdona un dígito cambiado (1.190.000 vs 1.290.000 da 96%).
+    Por eso cada número de la evidencia debe existir con EXACTAMENTE los mismos dígitos
+    en la fuente (ignorando solo separadores de miles: 900.123.456 == 900123456)."""
+    en_fuente = set(_partes_numericas(fuente))
+    return all(n in en_fuente for n in _partes_numericas(evidencia))
+
+
+_MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _fecha_en_texto(valor: date, texto: str) -> bool:
+    """Acepta 2026-08-16, 16/08/2026, 2026/08/16, 16-ago-2026, 16 de agosto de 2026, 16/08/26..."""
+    t = texto.lower()
+    nums = [int(n) for n in re.findall(r"\d+", t)]
+    anio_ok = valor.year in nums or (valor.year % 100) in nums
+    dia_ok = valor.day in nums
+    mes_ok = valor.month in nums or _MESES[valor.month - 1] in t
+    return anio_ok and dia_ok and mes_ok
 
 
 def _valor_en_evidencia(valor, evidencia: str) -> bool:
     """El valor devuelto debe poder leerse dentro de su propia evidencia."""
-    from .extractores import parse_fecha, parse_monto
+    from .extractores import parse_monto
 
-    tokens = _NUMERO.findall(evidencia)
     if isinstance(valor, Decimal):
-        return any(parse_monto(t) == valor for t in tokens)
+        return any(parse_monto(t) == valor for t in _NUMERO.findall(evidencia))
     if isinstance(valor, date):
-        return any(parse_fecha(t) == valor for t in tokens)
+        return _fecha_en_texto(valor, evidencia)
+    if re.fullmatch(r"[\d.\s-]+", str(valor)):  # NIT/cédula: comparar solo dígitos
+        return re.sub(r"\D", "", str(valor)) in re.sub(r"\D", "", evidencia)
     return _norm(str(valor)) in _norm(evidencia)
 
 
@@ -80,7 +101,13 @@ def verificar_grounding(f: FacturaExtraida, texto: str) -> list[Hallazgo]:
             continue
         evidencia = _norm(campo.evidencia)
         score = fuzz.partial_ratio(evidencia, fuente)
-        if score < UMBRAL_GROUNDING or not _numeros_exactos(evidencia, fuente):
+        # Lo que protege contra alucinaciones es que los NÚMEROS existan exactos en el
+        # documento. El rótulo puede venir unido por el LLM desde columnas de una tabla
+        # ("IVA 19% 119.827,73"), así que la similitud del texto solo se exige si la
+        # evidencia no tiene números.
+        tiene_numeros = bool(_NUMERO.search(evidencia))
+        valido = _numeros_exactos(evidencia, fuente) if tiene_numeros else score >= UMBRAL_GROUNDING
+        if not valido:
             hallazgos.append(
                 Hallazgo(regla="evidencia_inexistente", campo=nombre, severidad=Severidad.ERROR,
                          mensaje=f"{nombre}: la evidencia no aparece en el documento ({score:.0f}%)")
@@ -120,10 +147,14 @@ def verificar_reglas(f: FacturaExtraida, hoy: date | None = None) -> list[Hallaz
         if abs(suma - sub) > TOLERANCIA:
             err("suma_lineas", f"suma de líneas ({suma}) != subtotal ({sub})", "subtotal")
 
-    for nombre in ("nit_emisor", "nit_cliente"):
-        nit = getattr(f, nombre).valor
-        if nit and not nit_valido(nit):
-            err("dv_nit", f"{nombre} {nit}: dígito de verificación inválido", nombre)
+    nit = f.nit_emisor.valor
+    if nit and not nit_valido(nit):
+        err("dv_nit", f"nit_emisor {nit}: dígito de verificación inválido", "nit_emisor")
+    nit = f.nit_cliente.valor
+    if nit and not nit_valido(nit):
+        # Los emisores imprimen con frecuencia mal el DV de la cédula del cliente
+        # (visto en facturas reales): se avisa, pero no bloquea.
+        warn("dv_nit_cliente", f"nit_cliente {nit}: dígito de verificación inválido", "nit_cliente")
 
     emi, ven = f.fecha_emision.valor, f.fecha_vencimiento.valor
     if emi and emi > hoy:

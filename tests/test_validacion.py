@@ -94,8 +94,13 @@ def test_cedula_sin_dv_es_valida():
 
 
 def test_nit_con_dv_incorrecto():
-    f = factura(nit_cliente=Campo(valor="800.987.654-1", evidencia="x"))
-    assert any(h.regla == "dv_nit" for h in verificar_reglas(f, hoy=HOY))
+    emisor = factura(nit_emisor=Campo(valor="900.123.456-1", evidencia="x"))
+    assert any(h.regla == "dv_nit" for h in verificar_reglas(emisor, hoy=HOY))
+    # DV del cliente mal impreso por el emisor: advertencia, no bloquea
+    cliente = factura(nit_cliente=Campo(valor="800.987.654-1", evidencia="x"))
+    h = verificar_reglas(cliente, hoy=HOY)
+    assert not [x for x in h if x.severidad.value == "error"]
+    assert any(x.regla == "dv_nit_cliente" for x in h)
 
 
 def test_fecha_futura():
@@ -172,3 +177,31 @@ def test_normalizar_nit():
     assert normalizar_nit("800069933 6") == "800069933-6"
     assert normalizar_nit("900.123.456 - 8") == "900.123.456-8"
     assert normalizar_nit("1000491862") == "1000491862"
+
+
+# ------------------------------------- variantes de formato vistas con gpt-4.1-mini (v0.3)
+TEXTO_TABLA = """NIT: 800069933 6
+Fecha: 16-ago-2026
+IVA
+Base   Tarifa   Valor
+420.000,00   19%   79.800,00
+TOTAL
+499.800,00"""
+
+
+def test_formatos_reales_no_bloquean():
+    f = factura(
+        nit_emisor=Campo(valor="800069933-6", evidencia="NIT: 800069933 6"),
+        fecha_emision=Campo(valor=date(2026, 8, 16), evidencia="Fecha: 16-ago-2026"),
+        iva=Campo(valor=Decimal("79800"), evidencia="IVA 19% 79.800,00"),  # rótulo unido de tabla
+        total=Campo(valor=Decimal("499800"), evidencia="TOTAL 499.800,00"),
+    )
+    regl = {h.regla + ":" + (h.campo or "") for h in verificar_grounding(f, TEXTO_TABLA)}
+    for campo in ("nit_emisor", "fecha_emision", "iva", "total"):
+        assert not any(r.endswith(":" + campo) for r in regl), regl
+
+
+def test_tabla_con_numero_alucinado_sigue_bloqueando():
+    f = factura(total=Campo(valor=Decimal("498800"), evidencia="TOTAL 498.800,00"))
+    assert any(h.regla == "evidencia_inexistente" and h.campo == "total"
+               for h in verificar_grounding(f, TEXTO_TABLA))
