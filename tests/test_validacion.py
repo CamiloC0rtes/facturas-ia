@@ -268,3 +268,9 @@ def test_iva_disfrazado_de_descuento():
     assert [h.regla for h in verificar_rotulos(f)] == ["rotulo_incoherente"]
     ok = factura(descuentos=Campo(valor=Decimal("20994"), evidencia="Descuento 20.994,00"))
     assert verificar_rotulos(ok) == []
+
+
+def test_encabezados_de_tabla_mezclados_son_ambiguos():
+    ev = "CANT. DESCRIPCIÓN DESCUENTOS UNID. PRECIO VTA. TOTAL PORCENTAJE IMPUESTO ITEM 95.782,00"
+    f = factura(descuentos=Campo(valor=Decimal("95782"), evidencia=ev))
+    assert [h.regla for h in verificar_rotulos(f)] == ["rotulo_ambiguo"]

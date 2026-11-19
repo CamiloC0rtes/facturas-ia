@@ -313,6 +313,8 @@ _ROTULOS = {
     "iva": re.compile(r"iva|impuesto|imp\.", re.I),
 }
 _ROTULO_IVA = re.compile(r"\biva\b|impuesto a las ventas", re.I)
+_ROTULO_IMPUESTO = re.compile(r"\biva\b|impuesto|\bimp\.", re.I)
+_ROTULO_DESCUENTO = re.compile(r"desc", re.I)
 
 
 def verificar_rotulos(f: FacturaExtraida) -> list[Hallazgo]:
@@ -328,6 +330,12 @@ def verificar_rotulos(f: FacturaExtraida) -> list[Hallazgo]:
                 _ROTULO_IVA.sub("", c.evidencia)):
             h.append(Hallazgo(regla="rotulo_incoherente", campo=campo, severidad=Severidad.ERROR,
                               mensaje=f"{campo} {c.valor} parece ser el IVA ('{c.evidencia[:40]}')"))
+        elif (campo == "descuentos" and _ROTULO_IMPUESTO.search(c.evidencia)) or (
+                campo in ("iva", "otros_impuestos") and _ROTULO_DESCUENTO.search(c.evidencia)):
+            # Encabezados de tabla juntos (Falabella: "DESCUENTOS ... IMPUESTO ... 95.782,00"):
+            # no se puede saber a cuál columna pertenece el valor.
+            h.append(Hallazgo(regla="rotulo_ambiguo", campo=campo, severidad=Severidad.ERROR,
+                              mensaje=f"{campo} {c.valor}: la evidencia mezcla rótulos de descuento e impuesto"))
     return h
 
 

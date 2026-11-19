@@ -54,7 +54,8 @@ Streamlit con el documento y la evidencia resaltada (verde/rojo), tabla de campo
   - **IVA disfrazado de descuento** (Falabella, `v2`): el PDF de Falabella rotula como «TOTAL A PAGAR» el valor *sin* IVA (el XML dice otra cosa); el LLM puso el IVA como descuento para cuadrar la suma → regla `verificar_rotulos`: descuentos, otros impuestos, cargos e IVA deben venir de un rótulo de su tipo
   - **número de factura rotulado como «Número de Caja»** (Adidas): el LLM tomó otro código. Sin solución determinística desde el PDF → v0.4 (XML y asunto del correo, que por norma DIAN trae NIT;emisor;número)
 - ✅ La evaluación separa **falsos aprobados monetarios** (total o NIT mal: se cobra mal o a quien no es) de los de referencia (número o fecha)
-- ⏳ Re-medir `v2` y `v3` con `--reusar` (sin costo)
+- ✅ Re-medido con `--reusar`: `v3` **0 falsos aprobados monetarios**, 1 de referencia (Adidas), 56 % de automatización; `v2` dejó pasar r40 (Falabella: encabezados «DESCUENTOS» e «IMPUESTO» juntos en la evidencia) → regla `rotulo_ambiguo`
+- ⏳ Siguiente: **v0.4 XML DIAN como fuente principal** (todas las facturas del set lo traen; resuelve Falabella, Adidas y los PDF con clave de Claro)
 
 **Lección de esta ronda:** el PDF no siempre dice lo mismo que el XML legal (Falabella). Para facturas electrónicas, el XML debe ser la fuente de verdad; el LLM sobre el PDF es el plan B para documentos sin XML.
 - ⏳ Próximo prompt `v3`: prefijo del número de factura (`TDCR28625`, no `28625`) y subtotal antes de IVA en facturas con precios IVA incluido

@@ -45,9 +45,19 @@ python -m facturas.eval eval_privado --reusar resultados_eval_v2.json   # cambia
 
 Reporta exactitud por campo, tasa de automatización, latencia, **falsos aprobados** (cobros automáticos con algún dato crítico mal) y **revisiones innecesarias** (todo estaba bien, pero una regla la frenó), con las reglas que más frenan.
 
-### Resultados (primera ronda: 21 facturas electrónicas reales, 17 emisores)
+### Resultados con 54 facturas (33 emisores) · gpt-4.1-mini
 
-> El set se amplió a 54 facturas de 33 emisores; la comparación `v2` vs `v3` sobre ese set está en curso.
+| | prompt v2 | **prompt v3** |
+|---|---|---|
+| Facturas con todos los críticos bien | 72 % | 65 % |
+| Automatización | 57 % | 56 % |
+| Falsos aprobados (total) | 2 | **1** |
+| **Falsos aprobados monetarios** (total o NIT mal) | 1 → 0 con regla de rótulo ambiguo | **0** |
+| Revisiones innecesarias | 10 | 6 |
+
+El único falso aprobado de `v3` es de **referencia** (Adidas rotula el número de factura como «Número de Caja» y el modelo tomó otro código); el total y los NIT eran correctos. Lo que **no** se puede resolver desde el PDF —ese número, o Falabella, cuyo PDF rotula como «TOTAL A PAGAR» el valor sin IVA— queda para v0.4: leer el XML de la DIAN cuando viene.
+
+### Primera ronda: 21 facturas, 17 emisores
 
 | | Reglas (sin IA) | gpt-4.1-mini · prompt v1 | + reglas de rol | + prompt v2 | **+ grounding por dígitos** |
 |---|---|---|---|---|---|
